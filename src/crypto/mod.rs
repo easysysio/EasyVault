@@ -17,6 +17,7 @@ pub mod shamir;
 
 use rand::RngCore;
 use rand::rngs::OsRng;
+use sha2::{Digest, Sha256};
 
 /// Length of an AES-256 / master / vault / token key in bytes.
 pub const KEY_LEN: usize = 32;
@@ -39,4 +40,17 @@ pub fn random_bytes<const N: usize>() -> [u8; N] {
 // ─────────────────────────────────────────────────────────────────────────────
 pub fn random_key() -> [u8; KEY_LEN] {
     random_bytes::<KEY_LEN>()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// sha256_hex
+// Lowercase-hex SHA-256 digest, used to store session/token lookup hashes.
+// ─────────────────────────────────────────────────────────────────────────────
+pub fn sha256_hex(data: &[u8]) -> String {
+    let digest = Sha256::digest(data);
+    let mut out = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        out.push_str(&format!("{byte:02x}"));
+    }
+    out
 }

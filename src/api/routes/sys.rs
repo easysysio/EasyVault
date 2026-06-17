@@ -15,7 +15,7 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
-use axum::response::{Html, IntoResponse, Response};
+use axum::response::{IntoResponse, Response};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as B64;
 use serde::{Deserialize, Serialize};
@@ -264,23 +264,6 @@ async fn seal_status_json(state: &Arc<AppState>, row: &InitRow) -> Json<serde_js
         "progress": progress,
         "version": env!("CARGO_PKG_VERSION"),
     }))
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// GET /
-// Minimal landing page so the base URL isn't a bare 404 before the GUI ships
-// (the real web GUI arrives in a later increment).
-// ─────────────────────────────────────────────────────────────────────────────
-pub async fn index() -> Html<&'static str> {
-    Html(
-        "<!doctype html><meta charset=\"utf-8\"><title>EasyVault</title>\
-         <h1>EasyVault</h1>\
-         <p>API is up. The web GUI is not built yet.</p>\
-         <ul>\
-         <li><a href=\"/v1/sys/health\">/v1/sys/health</a></li>\
-         <li><a href=\"/v1/sys/seal-status\">/v1/sys/seal-status</a></li>\
-         </ul>",
-    )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

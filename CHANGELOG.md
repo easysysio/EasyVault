@@ -5,9 +5,23 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
-### Added
-- `GET /` — minimal landing page (links to health + seal-status) so the base
-  URL no longer returns a bare 404 before the web GUI is built.
+### Added — Increment 2a (auth + GUI foundation)
+- **First-run setup** (`/gui/setup`) — creates the initial master user
+  (crypto Flow 1: X25519 keypair generated, private key sealed under the
+  password-derived user_key). Locked once any user exists.
+- **Login / logout** (`/gui/login`, `/gui/logout`) — crypto Flow 2 verifies the
+  password, decrypts the private key, and opens a server-side session.
+- **Server-side sessions** (`auth/session.rs`) — the decrypted X25519 private
+  key lives only in `AppState.sessions` (in-memory, `ZeroizeOnDrop`); the
+  `gui_sessions` row stores just the hashed token + expiry. Cookie `ev_session`
+  (HttpOnly, SameSite=Lax), TTL from `security.session_ttl_hours`.
+- **Brute-force lockout** — `max_login_attempts` failures lock a username for
+  `lockout_minutes` (tracked in memory).
+- **Dashboard** (`/gui/`) — identity + role, instance seal state, vault count.
+- **Users module** (`users.rs`) — `create_user` / `get_by_username` /
+  `count_users`.
+- **Crypto helper** — `crypto::sha256_hex` for session/token lookup hashes.
+- `GET /` now redirects to `/gui/` (replaces the placeholder landing page).
 
 ## [0.1.0] — 2026-06-17
 

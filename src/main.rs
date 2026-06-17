@@ -7,11 +7,14 @@
 // =============================================================================
 
 mod api;
+mod auth;
 mod config;
 mod crypto;
 mod error;
 mod state;
 mod storage;
+mod users;
+mod web;
 
 use std::net::SocketAddr;
 
