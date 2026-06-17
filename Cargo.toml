@@ -1,0 +1,42 @@
+[package]
+name = "easyvault"
+version = "0.1.0"
+edition = "2024"
+description = "Self-hosted, Vault-compatible secrets manager with envelope encryption"
+license = "MIT"
+repository = "https://github.com/yarivha/EasyVault"
+
+[dependencies]
+# Web / async runtime
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6", features = ["trace"] }
+
+# Storage
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate", "chrono"] }
+
+# Serialization / config
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# Crypto
+argon2 = "0.5"
+aes-gcm = "0.10"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+sha2 = "0.10"
+rand = "0.8"
+zeroize = { version = "1.7", features = ["derive"] }
+sharks = "0.5"
+base64 = "0.22"
+
+# Utilities
+anyhow = "1"
+thiserror = "2"
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

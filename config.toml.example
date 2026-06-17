@@ -1,0 +1,32 @@
+# =============================================================================
+# config.toml.example — EasyVault configuration template
+#
+# Copy to config.toml (or point EASYVAULT_CONFIG at it) and edit.
+# =============================================================================
+
+[server]
+address = "0.0.0.0"
+port = 8200                        # match HashiCorp Vault default
+tls = false                        # TLS termination deferred to a later increment
+tls_cert = ""                      # empty = auto self-signed (future)
+tls_key = ""
+
+[storage]
+type = "sqlite"                    # "sqlite" (default) or "postgres" (future)
+path = "./easyvault.db"
+url = ""                           # postgres DSN (future)
+
+[security]
+session_ttl_hours = 8
+max_login_attempts = 5
+lockout_minutes = 15
+trusted_proxies = ["127.0.0.1"]    # honoured for X-Forwarded-For
+
+[audit]
+enabled = true
+log_raw_values = false             # NEVER set to true in production
+easylog_url = ""
+
+[init]
+default_key_shares = 5
+default_key_threshold = 3
