@@ -13,7 +13,7 @@ use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64URL;
 use chrono::{Duration, Utc};
 use uuid::Uuid;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::crypto::argon2;
 use crate::crypto::{self, aes};
@@ -30,6 +30,23 @@ pub struct SessionIdentity {
     pub user_id: String,
     pub username: String,
     pub is_master: bool,
+}
+
+/// Identity plus key material copied out of a live session, for vault crypto.
+///
+/// The private-key copy is wiped when this value is dropped, so handlers that
+/// hold a `SessionKeys` don't leave key material on the stack after returning.
+#[derive(ZeroizeOnDrop)]
+pub struct SessionKeys {
+    #[zeroize(skip)]
+    pub user_id: String,
+    #[zeroize(skip)]
+    pub username: String,
+    #[zeroize(skip)]
+    pub is_master: bool,
+    pub private_key: [u8; 32],
+    #[zeroize(skip)]
+    pub public_key: [u8; 32],
 }
 
 /// Successful authentication result: the user plus their decrypted private key.
@@ -159,6 +176,27 @@ pub async fn lookup(state: &Arc<AppState>, raw_token: &str) -> Option<SessionIde
     // Expired: drop it from memory and DB.
     evict(state, &hash).await;
     None
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// keys
+// Like `lookup`, but also copies out the session's X25519 key material so vault
+// operations can perform ECDH. Returns None if absent or expired.
+// ─────────────────────────────────────────────────────────────────────────────
+pub async fn keys(state: &Arc<AppState>, raw_token: &str) -> Option<SessionKeys> {
+    let hash = crypto::sha256_hex(raw_token.as_bytes());
+    let sessions = state.sessions.read().await;
+    let s = sessions.get(&hash)?;
+    if s.expires_at <= Utc::now() {
+        return None;
+    }
+    Some(SessionKeys {
+        user_id: s.user_id.clone(),
+        username: s.username.clone(),
+        is_master: s.is_master,
+        private_key: s.private_key,
+        public_key: s.public_key,
+    })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

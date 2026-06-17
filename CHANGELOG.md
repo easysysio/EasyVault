@@ -5,6 +5,25 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — Increment 2b (vaults, secrets, secret-browser GUI)
+- **Vault layer** (`vault/mod.rs`) — `create_vault` (crypto Flow 3: random
+  vault_key wrapped for the creator via self-ECDH), `list_for_user`, `get`,
+  `members`, `user_has_access`, `resolve_vault_key` (Flow 5), `grant` (Flow 4:
+  re-wrap the vault key under ECDH(granter→target)), and `revoke`.
+- **Secrets layer** (`secrets.rs`) — append-only versioned KV (crypto Flow 6):
+  `write` (new version per write, JSON sealed with the vault key), `read_latest`,
+  `list_paths`, `versions`, `soft_delete`.
+- **Secret-browser GUI** — dashboard vault list; vault create (master); vault
+  detail with secret listing + member list; add-secret / view-secret (decrypted,
+  with version history) / new-version / delete; grant + revoke (master).
+- **User management** (`/gui/users`, master only) — list users and create
+  standard (non-master) users; `users::list_all`.
+- **Seal gating** — all vault/secret operations require an unsealed instance.
+- **Key hygiene** — `SessionKeys` is `ZeroizeOnDrop`; resolved vault keys are
+  `Zeroizing` and explicitly wiped after use.
+- **Known gap:** `revoke` removes access but does not yet rotate the vault key
+  (crypto Flow 9) — full re-encryption rotation is a planned follow-up.
+
 ### Added — Increment 2a (auth + GUI foundation)
 - **First-run setup** (`/gui/setup`) — creates the initial master user
   (crypto Flow 1: X25519 keypair generated, private key sealed under the

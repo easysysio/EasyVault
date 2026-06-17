@@ -36,6 +36,27 @@ pub async fn count_users(db: &sqlx::SqlitePool) -> Result<i64, AppError> {
     Ok(n)
 }
 
+/// A compact user entry for management listings.
+#[derive(Debug, sqlx::FromRow)]
+pub struct UserListItem {
+    pub username: String,
+    pub is_master: bool,
+    pub active: bool,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// list_all
+// All users (username, role, active state) ordered by username.
+// ─────────────────────────────────────────────────────────────────────────────
+pub async fn list_all(db: &sqlx::SqlitePool) -> Result<Vec<UserListItem>, AppError> {
+    let rows = sqlx::query_as::<_, UserListItem>(
+        "SELECT username, is_master, active FROM users ORDER BY username",
+    )
+    .fetch_all(db)
+    .await?;
+    Ok(rows)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // get_by_username
 // Fetch a single user by username, or None if absent.

@@ -9,19 +9,59 @@
 use std::sync::Arc;
 
 use axum::Router;
-use axum::extract::{Form, State};
+use axum::extract::{Form, Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use chrono::{Duration, Utc};
 use serde::Deserialize;
+use zeroize::Zeroize;
 
-use crate::auth::session::{self, SessionIdentity};
+use crate::auth::session::{self, SessionIdentity, SessionKeys};
 use crate::error::AppError;
 use crate::state::AppState;
-use crate::users;
+use crate::{secrets, users, vault};
 
 pub mod pages;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// guard! — request preconditions for GUI handlers
+//   auth:     resolve the session or redirect to /gui/login (yields SessionKeys)
+//   unsealed: render a notice and return if the instance is sealed
+//   master:   render a forbidden notice and return if the user is not master
+// Each arm may early-`return` from the enclosing handler.
+// ─────────────────────────────────────────────────────────────────────────────
+macro_rules! guard {
+    (auth $state:ident $headers:ident) => {
+        match session_keys(&$state, &$headers).await {
+            Some(k) => k,
+            None => return Ok(Redirect::to("/gui/login").into_response()),
+        }
+    };
+    (unsealed $state:ident, $keys:expr) => {
+        if $state.is_sealed().await {
+            return Ok(Html(pages::notice_page(
+                Some(($keys).username.as_str()),
+                "Instance sealed",
+                "Unseal EasyVault via /v1/sys/unseal before accessing vaults and secrets.",
+            ))
+            .into_response());
+        }
+    };
+    (master $keys:expr) => {
+        if !($keys).is_master {
+            return Ok((
+                StatusCode::FORBIDDEN,
+                Html(pages::notice_page(
+                    Some(($keys).username.as_str()),
+                    "Access denied",
+                    "Only the master user can perform this action.",
+                )),
+            )
+                .into_response());
+        }
+    };
+}
 
 /// Credentials submitted by the setup and login forms.
 #[derive(Debug, Deserialize)]
@@ -41,6 +81,15 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/gui/setup", get(setup_form).post(setup_submit))
         .route("/gui/login", get(login_form).post(login_submit))
         .route("/gui/logout", post(logout))
+        .route("/gui/users", get(users_list).post(users_create))
+        .route("/gui/vaults/new", get(vault_new_form))
+        .route("/gui/vaults", post(vault_create))
+        .route("/gui/vaults/{id}", get(vault_detail))
+        .route("/gui/vaults/{id}/grant", post(vault_grant))
+        .route("/gui/vaults/{id}/revoke", post(vault_revoke))
+        .route("/gui/vaults/{id}/secret", get(secret_view).post(secret_write))
+        .route("/gui/vaults/{id}/secret/new", get(secret_new_form))
+        .route("/gui/vaults/{id}/secret/delete", post(secret_delete))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -56,8 +105,12 @@ async fn gui_root(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Res
     };
 
     let sealed = state.is_sealed().await;
-    let vault_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM vaults").fetch_one(&state.db).await?;
-    Ok(Html(pages::dashboard_page(&id.username, id.is_master, sealed, vault_count)).into_response())
+    let vaults: Vec<pages::VaultListItem> = vault::list_for_user(&state.db, &id.user_id)
+        .await?
+        .into_iter()
+        .map(|v| pages::VaultListItem { id: v.id, name: v.name, description: v.description })
+        .collect();
+    Ok(Html(pages::dashboard_page(&id.username, id.is_master, sealed, &vaults)).into_response())
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -146,6 +199,338 @@ async fn logout(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Respo
         session::logout(&state, &token).await;
     }
     redirect_with_cookie("/gui/login", &session::clear_cookie())
+}
+
+/// Vault create form fields.
+#[derive(Debug, Deserialize)]
+pub struct VaultForm {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+}
+
+/// Grant-access form fields.
+#[derive(Debug, Deserialize)]
+pub struct GrantForm {
+    pub username: String,
+}
+
+/// Revoke-access form fields.
+#[derive(Debug, Deserialize)]
+pub struct RevokeForm {
+    pub user_id: String,
+}
+
+/// Secret write form fields.
+#[derive(Debug, Deserialize)]
+pub struct SecretForm {
+    pub path: String,
+    pub data: String,
+}
+
+/// Single-path form/query fields (view, delete, prefill).
+#[derive(Debug, Default, Deserialize)]
+pub struct PathParam {
+    #[serde(default)]
+    pub path: String,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /gui/users
+// Master-only user listing + create form.
+// ─────────────────────────────────────────────────────────────────────────────
+async fn users_list(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, AppError> {
+    let keys = guard!(auth state headers);
+    guard!(master &keys);
+    let users = users::list_all(&state.db).await?;
+    Ok(Html(pages::users_page(&keys.username, &users, None)).into_response())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /gui/users
+// Master creates a standard (non-master) user.
+// ─────────────────────────────────────────────────────────────────────────────
+async fn users_create(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Form(form): Form<Credentials>,
+) -> Result<Response, AppError> {
+    let keys = guard!(auth state headers);
+    guard!(master &keys);
+
+    match users::create_user(&state.db, &form.username, &form.password, false).await {
+        Ok(_) => Ok(Redirect::to("/gui/users").into_response()),
+        Err(AppError::BadRequest(msg)) => {
+            let users = users::list_all(&state.db).await?;
+            Ok((StatusCode::BAD_REQUEST, Html(pages::users_page(&keys.username, &users, Some(&msg)))).into_response())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /gui/vaults/new
+// Master-only form to create a vault.
+// ─────────────────────────────────────────────────────────────────────────────
+async fn vault_new_form(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, AppError> {
+    let keys = guard!(auth state headers);
+    guard!(unsealed state, &keys);
+    guard!(master &keys);
+    Ok(Html(pages::vault_create_page(&keys.username, None)).into_response())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /gui/vaults
+// Create a vault owned by the master user (crypto Flow 3).
+// ─────────────────────────────────────────────────────────────────────────────
+async fn vault_create(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Form(form): Form<VaultForm>,
+) -> Result<Response, AppError> {
+    let keys = guard!(auth state headers);
+    guard!(unsealed state, &keys);
+    guard!(master &keys);
+
+    match vault::create_vault(&state.db, &form.name, &form.description, &keys.user_id, &keys.private_key, &keys.public_key).await {
+        Ok(id) => Ok(Redirect::to(&format!("/gui/vaults/{id}")).into_response()),
+        Err(AppError::BadRequest(msg)) => {
+            Ok((StatusCode::BAD_REQUEST, Html(pages::vault_create_page(&keys.username, Some(&msg)))).into_response())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /gui/vaults/{id}
+// Vault detail: secret listing, members, and grant/revoke controls.
+// ─────────────────────────────────────────────────────────────────────────────
+async fn vault_detail(
+    State(state): State<Arc<AppState>>,
+    Path(vault_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    let keys = guard!(auth state headers);
+    guard!(unsealed state, &keys);
+    render_vault_detail(&state, &keys, &vault_id, None).await
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /gui/vaults/{id}/grant
+// Master grants another user access to the vault (crypto Flow 4).
+// ─────────────────────────────────────────────────────────────────────────────
+async fn vault_grant(
+    State(state): State<Arc<AppState>>,
+    Path(vault_id): Path<String>,
+    headers: HeaderMap,
+    Form(form): Form<GrantForm>,
+) -> Result<Response, AppError> {
+    let keys = guard!(auth state headers);
+    guard!(unsealed state, &keys);
+    guard!(master &keys);
+
+    match vault::grant(&state.db, &vault_id, &keys.user_id, &keys.private_key, &keys.public_key, &form.username).await {
+        Ok(()) => Ok(Redirect::to(&format!("/gui/vaults/{vault_id}")).into_response()),
+        Err(AppError::BadRequest(msg)) => render_vault_detail(&state, &keys, &vault_id, Some(&msg)).await,
+        Err(e) => Err(e),
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /gui/vaults/{id}/revoke
+// Master removes a user's vault access (key rotation pending — see vault::revoke).
+// ─────────────────────────────────────────────────────────────────────────────
+async fn vault_revoke(
+    State(state): State<Arc<AppState>>,
+    Path(vault_id): Path<String>,
+    headers: HeaderMap,
+    Form(form): Form<RevokeForm>,
+) -> Result<Response, AppError> {
+    let keys = guard!(auth state headers);
+    guard!(unsealed state, &keys);
+    guard!(master &keys);
+
+    vault::revoke(&state.db, &vault_id, &form.user_id).await?;
+    Ok(Redirect::to(&format!("/gui/vaults/{vault_id}")).into_response())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /gui/vaults/{id}/secret/new
+// Form to write a secret (path prefilled when adding a new version).
+// ─────────────────────────────────────────────────────────────────────────────
+async fn secret_new_form(
+    State(state): State<Arc<AppState>>,
+    Path(vault_id): Path<String>,
+    headers: HeaderMap,
+    Query(q): Query<PathParam>,
+) -> Result<Response, AppError> {
+    let keys = guard!(auth state headers);
+    guard!(unsealed state, &keys);
+    let Some(v) = vault::get(&state.db, &vault_id).await? else { return Ok(not_found(&keys)); };
+    if !vault::user_has_access(&state.db, &vault_id, &keys.user_id).await? {
+        return Ok(access_denied(&keys));
+    }
+    Ok(Html(pages::secret_new_page(&keys.username, &vault_id, &v.name, None, &q.path, "")).into_response())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /gui/vaults/{id}/secret
+// Write a new version of a secret, sealed with the vault key (crypto Flow 6).
+// ─────────────────────────────────────────────────────────────────────────────
+async fn secret_write(
+    State(state): State<Arc<AppState>>,
+    Path(vault_id): Path<String>,
+    headers: HeaderMap,
+    Form(form): Form<SecretForm>,
+) -> Result<Response, AppError> {
+    let keys = guard!(auth state headers);
+    guard!(unsealed state, &keys);
+    let Some(v) = vault::get(&state.db, &vault_id).await? else { return Ok(not_found(&keys)); };
+
+    // Parse the submitted data as a JSON value.
+    let value: serde_json::Value = match serde_json::from_str(form.data.trim()) {
+        Ok(val) => val,
+        Err(_) => {
+            return Ok((
+                StatusCode::BAD_REQUEST,
+                Html(pages::secret_new_page(&keys.username, &vault_id, &v.name, Some("Data must be valid JSON (e.g. {\"password\":\"…\"})."), &form.path, &form.data)),
+            )
+                .into_response());
+        }
+    };
+
+    let mut vault_key = match vault::resolve_vault_key(&state.db, &vault_id, &keys.user_id, &keys.private_key).await {
+        Ok(k) => k,
+        Err(AppError::Forbidden) => return Ok(access_denied(&keys)),
+        Err(e) => return Err(e),
+    };
+
+    let result = secrets::write(&state.db, &vault_id, &form.path, &value, &vault_key, &keys.user_id).await;
+    vault_key.zeroize();
+    match result {
+        Ok(_) => Ok(Redirect::to(&format!("/gui/vaults/{}/secret?path={}", vault_id, urlencode(form.path.trim()))).into_response()),
+        Err(AppError::BadRequest(msg)) => Ok((
+            StatusCode::BAD_REQUEST,
+            Html(pages::secret_new_page(&keys.username, &vault_id, &v.name, Some(&msg), &form.path, &form.data)),
+        )
+            .into_response()),
+        Err(e) => Err(e),
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /gui/vaults/{id}/secret?path=…
+// Decrypt and display a secret's current value plus its version history.
+// ─────────────────────────────────────────────────────────────────────────────
+async fn secret_view(
+    State(state): State<Arc<AppState>>,
+    Path(vault_id): Path<String>,
+    headers: HeaderMap,
+    Query(q): Query<PathParam>,
+) -> Result<Response, AppError> {
+    let keys = guard!(auth state headers);
+    guard!(unsealed state, &keys);
+    let Some(v) = vault::get(&state.db, &vault_id).await? else { return Ok(not_found(&keys)); };
+
+    let mut vault_key = match vault::resolve_vault_key(&state.db, &vault_id, &keys.user_id, &keys.private_key).await {
+        Ok(k) => k,
+        Err(AppError::Forbidden) => return Ok(access_denied(&keys)),
+        Err(e) => return Err(e),
+    };
+    let latest = secrets::read_latest(&state.db, &vault_id, &q.path, &vault_key).await;
+    vault_key.zeroize();
+
+    let (version, value) = match latest? {
+        Some(pair) => pair,
+        None => return Ok(Html(pages::notice_page(Some(keys.username.as_str()), "Secret not found", "No live version exists for that path.")).into_response()),
+    };
+    let pretty = serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".into());
+    let versions = secrets::versions(&state.db, &vault_id, &q.path).await?;
+    Ok(Html(pages::secret_view_page(&keys.username, &vault_id, &v.name, &q.path, version, &pretty, &versions)).into_response())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /gui/vaults/{id}/secret/delete
+// Soft-delete the latest version of a secret path.
+// ─────────────────────────────────────────────────────────────────────────────
+async fn secret_delete(
+    State(state): State<Arc<AppState>>,
+    Path(vault_id): Path<String>,
+    headers: HeaderMap,
+    Form(form): Form<PathParam>,
+) -> Result<Response, AppError> {
+    let keys = guard!(auth state headers);
+    guard!(unsealed state, &keys);
+    if !vault::user_has_access(&state.db, &vault_id, &keys.user_id).await? {
+        return Ok(access_denied(&keys));
+    }
+    secrets::soft_delete(&state.db, &vault_id, &form.path).await?;
+    Ok(Redirect::to(&format!("/gui/vaults/{vault_id}")).into_response())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// render_vault_detail
+// Load a vault's secrets + members and render the detail page (or access pages).
+// ─────────────────────────────────────────────────────────────────────────────
+async fn render_vault_detail(
+    state: &Arc<AppState>,
+    keys: &SessionKeys,
+    vault_id: &str,
+    error: Option<&str>,
+) -> Result<Response, AppError> {
+    let Some(v) = vault::get(&state.db, vault_id).await? else { return Ok(not_found(keys)); };
+    if !vault::user_has_access(&state.db, vault_id, &keys.user_id).await? {
+        return Ok(access_denied(keys));
+    }
+    let secret_list = secrets::list_paths(&state.db, vault_id).await?;
+    let members = vault::members(&state.db, vault_id).await?;
+    Ok(Html(pages::vault_detail_page(
+        &keys.username,
+        keys.is_master,
+        vault_id,
+        &v.name,
+        v.description.as_deref().unwrap_or(""),
+        &secret_list,
+        &members,
+        &keys.user_id,
+        error,
+    ))
+    .into_response())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// session_keys
+// Resolve the request's session into key material, if logged in.
+// ─────────────────────────────────────────────────────────────────────────────
+async fn session_keys(state: &Arc<AppState>, headers: &HeaderMap) -> Option<SessionKeys> {
+    let token = cookie_token(headers)?;
+    session::keys(state, &token).await
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// not_found / access_denied
+// Standard GUI notice responses for missing vaults and insufficient access.
+// ─────────────────────────────────────────────────────────────────────────────
+fn not_found(keys: &SessionKeys) -> Response {
+    (StatusCode::NOT_FOUND, Html(pages::notice_page(Some(keys.username.as_str()), "Not found", "That vault does not exist."))).into_response()
+}
+fn access_denied(keys: &SessionKeys) -> Response {
+    (StatusCode::FORBIDDEN, Html(pages::notice_page(Some(keys.username.as_str()), "Access denied", "You do not have access to this vault."))).into_response()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// urlencode
+// Minimal percent-encoding for redirect targets containing secret paths.
+// ─────────────────────────────────────────────────────────────────────────────
+fn urlencode(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for b in input.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

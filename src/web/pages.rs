@@ -54,7 +54,13 @@ border-radius:7px;margin-bottom:8px;font-size:14px}\
 .pill.warn{background:#3d2a12;color:#d29922;border:1px solid #9e6a03}\
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}\
 .kv{padding:12px 14px;background:#0e1116;border:1px solid #30363d;border-radius:8px}\
-.kv .k{font-size:12px;color:#7d8590}.kv .v{font-size:15px;margin-top:2px}";
+.kv .k{font-size:12px;color:#7d8590}.kv .v{font-size:15px;margin-top:2px}\
+table{width:100%;border-collapse:collapse;margin-top:10px}\
+th{text-align:left;font-size:12px;color:#7d8590;font-weight:600;padding:8px 10px;border-bottom:1px solid #30363d}\
+td{padding:9px 10px;border-bottom:1px solid #21262d;font-size:14px;vertical-align:middle}\
+tr:last-child td{border-bottom:0}\
+textarea{font-family:ui-monospace,monospace}\
+code{background:#0e1116;border:1px solid #30363d;border-radius:4px;padding:1px 5px;font-size:13px}";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // layout
@@ -117,41 +123,327 @@ pub fn login_page(error: Option<&str>) -> String {
     layout("Sign in", None, &body)
 }
 
+/// A vault entry to render in lists: (id, name, optional description).
+pub struct VaultListItem {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // dashboard_page
-// Authenticated landing: identity, instance seal state, and a vault summary.
+// Authenticated landing: identity, instance seal state, and the user's vaults.
 // ─────────────────────────────────────────────────────────────────────────────
-pub fn dashboard_page(username: &str, is_master: bool, sealed: bool, vault_count: i64) -> String {
-    let role = if is_master {
-        "<span class=\"pill ok\">master</span>"
-    } else {
-        "<span class=\"pill warn\">user</span>"
-    };
-    let seal = if sealed {
-        "<span class=\"pill warn\">sealed</span>"
-    } else {
-        "<span class=\"pill ok\">unsealed</span>"
-    };
+pub fn dashboard_page(username: &str, is_master: bool, sealed: bool, vaults: &[VaultListItem]) -> String {
+    let role = role_pill(is_master);
+    let seal = seal_pill(sealed);
     let seal_note = if sealed {
-        "<p class=\"muted\">The instance is sealed — secret operations are blocked until \
-         it is unsealed via <code>/v1/sys/unseal</code>.</p>"
+        "<p class=\"muted\">The instance is sealed — vault and secret operations are blocked \
+         until it is unsealed via <code>/v1/sys/unseal</code>.</p>"
     } else {
         ""
     };
+    let new_vault = if is_master && !sealed {
+        "<a href=\"/gui/vaults/new\"><button type=\"button\">New vault</button></a>"
+    } else {
+        ""
+    };
+    let admin_link = if is_master {
+        "<p style=\"margin-top:14px\"><a href=\"/gui/users\">Manage users &rarr;</a></p>"
+    } else {
+        ""
+    };
+
+    let vault_rows = if vaults.is_empty() {
+        "<p class=\"muted\">No vaults yet.</p>".to_string()
+    } else {
+        let mut s = String::from("<table><tr><th>Vault</th><th>Description</th></tr>");
+        for v in vaults {
+            s.push_str(&format!(
+                "<tr><td><a href=\"/gui/vaults/{id}\">{name}</a></td><td class=\"muted\">{desc}</td></tr>",
+                id = escape(&v.id),
+                name = escape(&v.name),
+                desc = escape(v.description.as_deref().unwrap_or(""))
+            ));
+        }
+        s.push_str("</table>");
+        s
+    };
+
     let body = format!(
         "<div class=\"card\"><h1>Dashboard</h1>\
          <h2>Signed in as {user} {role}</h2>\
          <div class=\"grid\">\
          <div class=\"kv\"><div class=\"k\">Instance</div><div class=\"v\">{seal}</div></div>\
-         <div class=\"kv\"><div class=\"k\">Vaults</div><div class=\"v\">{vaults}</div></div>\
-         </div>{seal_note}</div>\
-         <div class=\"card\"><h2>Vaults</h2>\
-         <p class=\"muted\">Vault management arrives in the next increment.</p></div>",
+         <div class=\"kv\"><div class=\"k\">Your vaults</div><div class=\"v\">{count}</div></div>\
+         </div>{seal_note}{admin_link}</div>\
+         <div class=\"card\"><div style=\"display:flex;justify-content:space-between;align-items:center\">\
+         <h2 style=\"margin:0\">Vaults</h2>{new_vault}</div>{vault_rows}</div>",
         user = escape(username),
         role = role,
         seal = seal,
-        vaults = vault_count,
-        seal_note = seal_note
+        count = vaults.len(),
+        seal_note = seal_note,
+        admin_link = admin_link,
+        new_vault = new_vault,
+        vault_rows = vault_rows,
     );
     layout("Dashboard", Some(username), &body)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// users_page
+// Master-only user management: list users and create additional (non-master) ones.
+// ─────────────────────────────────────────────────────────────────────────────
+pub fn users_page(username: &str, users: &[crate::users::UserListItem], error: Option<&str>) -> String {
+    let err = error.map(|e| format!("<div class=\"err\">{}</div>", escape(e))).unwrap_or_default();
+    let mut rows = String::from("<table><tr><th>Username</th><th>Role</th><th>State</th></tr>");
+    for u in users {
+        rows.push_str(&format!(
+            "<tr><td>{name}</td><td>{role}</td><td>{state}</td></tr>",
+            name = escape(&u.username),
+            role = role_pill(u.is_master),
+            state = if u.active { "<span class=\"pill ok\">active</span>" } else { "<span class=\"pill warn\">disabled</span>" },
+        ));
+    }
+    rows.push_str("</table>");
+    let body = format!(
+        "<p><a href=\"/gui/\">&larr; Dashboard</a></p>\
+         <div class=\"card\"><h1>Users</h1>{err}{rows}</div>\
+         <div class=\"card\"><h2>Add user</h2>\
+         <form method=\"post\" action=\"/gui/users\">\
+         <label>Username</label><input name=\"username\" required>\
+         <label>Password</label><input name=\"password\" type=\"password\" required>\
+         <p class=\"muted\">Creates a standard (non-master) user.</p>\
+         <button type=\"submit\">Create user</button></form></div>",
+        err = err,
+        rows = rows,
+    );
+    layout("Users", Some(username), &body)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// vault_create_page
+// Master-only form to create a new vault.
+// ─────────────────────────────────────────────────────────────────────────────
+pub fn vault_create_page(username: &str, error: Option<&str>) -> String {
+    let err = error.map(|e| format!("<div class=\"err\">{}</div>", escape(e))).unwrap_or_default();
+    let body = format!(
+        "<div class=\"card\"><h1>New vault</h1>{err}\
+         <form method=\"post\" action=\"/gui/vaults\">\
+         <label>Name</label><input name=\"name\" autofocus required>\
+         <label>Description</label><input name=\"description\">\
+         <button type=\"submit\">Create vault</button>\
+         &nbsp;<a href=\"/gui/\">Cancel</a></form></div>"
+    );
+    layout("New vault", Some(username), &body)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// vault_detail_page
+// Vault view: secret listing, member list (+ grant/revoke for master), and a
+// link to add a secret.
+// ─────────────────────────────────────────────────────────────────────────────
+#[allow(clippy::too_many_arguments)]
+pub fn vault_detail_page(
+    username: &str,
+    is_master: bool,
+    vault_id: &str,
+    vault_name: &str,
+    description: &str,
+    secrets: &[crate::secrets::SecretListing],
+    members: &[crate::vault::VaultMember],
+    current_user_id: &str,
+    error: Option<&str>,
+) -> String {
+    let err = error.map(|e| format!("<div class=\"err\">{}</div>", escape(e))).unwrap_or_default();
+
+    // Secret listing.
+    let secret_rows = if secrets.is_empty() {
+        "<p class=\"muted\">No secrets yet.</p>".to_string()
+    } else {
+        let mut s = String::from("<table><tr><th>Path</th><th>Version</th><th></th></tr>");
+        for sec in secrets {
+            let href = format!("/gui/vaults/{}/secret?path={}", escape(vault_id), urlencode(&sec.path));
+            s.push_str(&format!(
+                "<tr><td>{path}</td><td>v{ver}</td><td><a href=\"{href}\">view</a></td></tr>",
+                path = escape(&sec.path),
+                ver = sec.version,
+                href = href,
+            ));
+        }
+        s.push_str("</table>");
+        s
+    };
+
+    // Member listing (+ revoke for master, except self).
+    let mut member_rows = String::from("<table><tr><th>User</th><th>Granted</th><th></th></tr>");
+    for m in members {
+        let revoke = if is_master && m.user_id != current_user_id {
+            format!(
+                "<form method=\"post\" action=\"/gui/vaults/{vid}/revoke\" style=\"margin:0\">\
+                 <input type=\"hidden\" name=\"user_id\" value=\"{uid}\">\
+                 <button class=\"link\" type=\"submit\">revoke</button></form>",
+                vid = escape(vault_id),
+                uid = escape(&m.user_id),
+            )
+        } else {
+            String::new()
+        };
+        member_rows.push_str(&format!(
+            "<tr><td>{user}</td><td class=\"muted\">{granted}</td><td>{revoke}</td></tr>",
+            user = escape(&m.username),
+            granted = escape(&m.granted_at),
+            revoke = revoke,
+        ));
+    }
+    member_rows.push_str("</table>");
+
+    let grant_form = if is_master {
+        format!(
+            "<form method=\"post\" action=\"/gui/vaults/{vid}/grant\" \
+             style=\"display:flex;gap:8px;align-items:flex-end;margin-top:8px\">\
+             <div style=\"flex:1\"><label style=\"margin-top:0\">Grant access to username</label>\
+             <input name=\"username\" required></div>\
+             <button type=\"submit\" style=\"margin:0\">Grant</button></form>",
+            vid = escape(vault_id)
+        )
+    } else {
+        String::new()
+    };
+
+    let desc_html = if description.is_empty() {
+        String::new()
+    } else {
+        format!("<p class=\"muted\">{}</p>", escape(description))
+    };
+
+    let body = format!(
+        "<p><a href=\"/gui/\">&larr; Dashboard</a></p>{err}\
+         <div class=\"card\"><h1>{name}</h1>{desc}</div>\
+         <div class=\"card\"><div style=\"display:flex;justify-content:space-between;align-items:center\">\
+         <h2 style=\"margin:0\">Secrets</h2>\
+         <a href=\"/gui/vaults/{vid}/secret/new\"><button type=\"button\">Add secret</button></a></div>\
+         {secret_rows}</div>\
+         <div class=\"card\"><h2>Access</h2>{member_rows}{grant_form}</div>",
+        err = err,
+        name = escape(vault_name),
+        desc = desc_html,
+        vid = escape(vault_id),
+        secret_rows = secret_rows,
+        member_rows = member_rows,
+        grant_form = grant_form,
+    );
+    layout(vault_name, Some(username), &body)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// secret_new_page
+// Form to write a new secret (path + JSON object) into a vault.
+// ─────────────────────────────────────────────────────────────────────────────
+pub fn secret_new_page(username: &str, vault_id: &str, vault_name: &str, error: Option<&str>, path: &str, data: &str) -> String {
+    let err = error.map(|e| format!("<div class=\"err\">{}</div>", escape(e))).unwrap_or_default();
+    let body = format!(
+        "<p><a href=\"/gui/vaults/{vid}\">&larr; {name}</a></p>\
+         <div class=\"card\"><h1>Add secret</h1>{err}\
+         <form method=\"post\" action=\"/gui/vaults/{vid}/secret\">\
+         <label>Path</label><input name=\"path\" placeholder=\"db/postgres/password\" value=\"{path}\" required>\
+         <label>Data (JSON object)</label>\
+         <textarea name=\"data\" rows=\"6\" style=\"width:100%;font-family:ui-monospace,monospace;\
+         padding:10px;border:1px solid #30363d;border-radius:7px;background:#0e1116;color:#e6edf3\" \
+         placeholder='{{\"password\": \"s3cr3t\"}}' required>{data}</textarea>\
+         <button type=\"submit\">Save secret</button></form></div>",
+        vid = escape(vault_id),
+        name = escape(vault_name),
+        err = err,
+        path = escape(path),
+        data = escape(data),
+    );
+    layout("Add secret", Some(username), &body)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// secret_view_page
+// Show a decrypted secret's current value plus its version history.
+// ─────────────────────────────────────────────────────────────────────────────
+pub fn secret_view_page(
+    username: &str,
+    vault_id: &str,
+    vault_name: &str,
+    path: &str,
+    version: i64,
+    pretty_json: &str,
+    versions: &[crate::secrets::SecretVersion],
+) -> String {
+    let mut vrows = String::from("<table><tr><th>Version</th><th>Created</th><th>State</th></tr>");
+    for v in versions {
+        vrows.push_str(&format!(
+            "<tr><td>v{ver}</td><td class=\"muted\">{created}</td><td>{state}</td></tr>",
+            ver = v.version,
+            created = escape(&v.created_at),
+            state = if v.deleted { "<span class=\"pill warn\">deleted</span>" } else { "<span class=\"pill ok\">live</span>" },
+        ));
+    }
+    vrows.push_str("</table>");
+
+    let body = format!(
+        "<p><a href=\"/gui/vaults/{vid}\">&larr; {name}</a></p>\
+         <div class=\"card\"><h1>{path}</h1><h2>Current value (v{ver})</h2>\
+         <pre style=\"background:#0e1116;border:1px solid #30363d;border-radius:8px;padding:14px;\
+         overflow:auto;color:#e6edf3\">{json}</pre>\
+         <div style=\"display:flex;gap:10px\">\
+         <a href=\"/gui/vaults/{vid}/secret/new?path={pathenc}\"><button type=\"button\">New version</button></a>\
+         <form method=\"post\" action=\"/gui/vaults/{vid}/secret/delete\" style=\"margin:0\">\
+         <input type=\"hidden\" name=\"path\" value=\"{path}\">\
+         <button type=\"submit\" style=\"background:#6e2330\">Delete</button></form></div></div>\
+         <div class=\"card\"><h2>Versions</h2>{vrows}</div>",
+        vid = escape(vault_id),
+        name = escape(vault_name),
+        path = escape(path),
+        pathenc = urlencode(path),
+        ver = version,
+        json = escape(pretty_json),
+        vrows = vrows,
+    );
+    layout(path, Some(username), &body)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// notice_page
+// Generic single-message page (sealed instance, forbidden, etc.).
+// ─────────────────────────────────────────────────────────────────────────────
+pub fn notice_page(username: Option<&str>, title: &str, message: &str) -> String {
+    let body = format!(
+        "<div class=\"card\"><h1>{title}</h1><p class=\"muted\">{msg}</p>\
+         <a href=\"/gui/\">&larr; Back to dashboard</a></div>",
+        title = escape(title),
+        msg = escape(message),
+    );
+    layout(title, username, &body)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// role_pill / seal_pill
+// Small status badges reused across pages.
+// ─────────────────────────────────────────────────────────────────────────────
+fn role_pill(is_master: bool) -> &'static str {
+    if is_master { "<span class=\"pill ok\">master</span>" } else { "<span class=\"pill warn\">user</span>" }
+}
+fn seal_pill(sealed: bool) -> &'static str {
+    if sealed { "<span class=\"pill warn\">sealed</span>" } else { "<span class=\"pill ok\">unsealed</span>" }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// urlencode
+// Minimal percent-encoding for secret paths placed in query strings.
+// ─────────────────────────────────────────────────────────────────────────────
+fn urlencode(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for b in input.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
 }

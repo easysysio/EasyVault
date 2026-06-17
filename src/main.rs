@@ -11,9 +11,11 @@ mod auth;
 mod config;
 mod crypto;
 mod error;
+mod secrets;
 mod state;
 mod storage;
 mod users;
+mod vault;
 mod web;
 
 use std::net::SocketAddr;
