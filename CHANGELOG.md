@@ -3,6 +3,12 @@
 All notable changes to EasyVault are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- `GET /` — minimal landing page (links to health + seal-status) so the base
+  URL no longer returns a bare 404 before the web GUI is built.
+
 ## [0.1.0] — 2026-06-17
 
 First foundation increment: a Vault-compatible server that boots **sealed** and

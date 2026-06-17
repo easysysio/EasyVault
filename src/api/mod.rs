@@ -21,6 +21,7 @@ pub mod routes;
 // ─────────────────────────────────────────────────────────────────────────────
 pub fn build_router(state: Arc<AppState>) -> Router {
     Router::new()
+        .route("/", get(routes::sys::index))
         .route("/v1/sys/init", post(routes::sys::init))
         .route("/v1/sys/unseal", post(routes::sys::unseal))
         .route("/v1/sys/seal-status", get(routes::sys::seal_status))
