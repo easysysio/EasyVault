@@ -17,6 +17,7 @@ use chrono::{Duration, Utc};
 use serde::Deserialize;
 use zeroize::Zeroize;
 
+use crate::api::routes::sys;
 use crate::auth::session::{self, SessionIdentity, SessionKeys};
 use crate::error::AppError;
 use crate::state::AppState;
@@ -79,6 +80,8 @@ pub fn routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/gui", get(gui_root))
         .route("/gui/", get(gui_root))
+        .route("/gui/unseal", get(unseal_form).post(unseal_submit))
+        .route("/gui/unseal/init", post(unseal_init))
         .route("/gui/setup", get(setup_form).post(setup_submit))
         .route("/gui/login", get(login_form).post(login_submit))
         .route("/gui/logout", post(logout))
@@ -103,6 +106,11 @@ pub fn routes() -> Router<Arc<AppState>> {
 // First-run → setup; unauthenticated → login; otherwise render the dashboard.
 // ─────────────────────────────────────────────────────────────────────────────
 async fn gui_root(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, AppError> {
+    // Uninitialized or sealed instances are steered to the unseal flow first.
+    let seal = sys::seal_view(&state).await?;
+    if !seal.initialized || seal.sealed {
+        return Ok(Redirect::to("/gui/unseal").into_response());
+    }
     if users::count_users(&state.db).await? == 0 {
         return Ok(Redirect::to("/gui/setup").into_response());
     }
@@ -122,6 +130,91 @@ async fn gui_root(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Res
         .map(|v| pages::VaultListItem { id: v.id, name: v.name, description: v.description })
         .collect();
     Ok(Html(pages::dashboard_page(&id.username, id.is_master, sealed, &vaults)).into_response())
+}
+
+/// Initialize form fields (share / threshold counts).
+#[derive(Debug, Deserialize)]
+pub struct InitForm {
+    #[serde(default)]
+    pub shares: String,
+    #[serde(default)]
+    pub threshold: String,
+}
+
+/// Single unseal-share submission.
+#[derive(Debug, Deserialize)]
+pub struct ShareForm {
+    pub key: String,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /gui/unseal
+// Show the initialize form (uninitialized), the unseal form (sealed), or
+// redirect to the app when already unsealed. Public (pre-auth).
+// ─────────────────────────────────────────────────────────────────────────────
+async fn unseal_form(State(state): State<Arc<AppState>>) -> Result<Response, AppError> {
+    let v = sys::seal_view(&state).await?;
+    if !v.initialized {
+        return Ok(Html(pages::unseal_init_page(None)).into_response());
+    }
+    if !v.sealed {
+        return Ok(Redirect::to("/gui/").into_response());
+    }
+    Ok(Html(pages::unseal_page(v.progress, v.threshold, None)).into_response())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /gui/unseal/init
+// Initialize the instance and display the generated shares once.
+// ─────────────────────────────────────────────────────────────────────────────
+async fn unseal_init(
+    State(state): State<Arc<AppState>>,
+    Form(form): Form<InitForm>,
+) -> Result<Response, AppError> {
+    if sys::seal_view(&state).await?.initialized {
+        return Ok(Redirect::to("/gui/unseal").into_response());
+    }
+    let shares = form.shares.trim().parse::<u8>().unwrap_or(state.config.init.default_key_shares);
+    let threshold = form.threshold.trim().parse::<u8>().unwrap_or(state.config.init.default_key_threshold);
+    match sys::perform_init(&state, shares, threshold).await {
+        Ok(keys) => Ok(Html(pages::unseal_shares_page(&keys, threshold as usize)).into_response()),
+        Err(AppError::BadRequest(msg)) => {
+            Ok((StatusCode::BAD_REQUEST, Html(pages::unseal_init_page(Some(&msg)))).into_response())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /gui/unseal
+// Submit one unseal share; redirect to the app once unsealed.
+// ─────────────────────────────────────────────────────────────────────────────
+async fn unseal_submit(
+    State(state): State<Arc<AppState>>,
+    Form(form): Form<ShareForm>,
+) -> Result<Response, AppError> {
+    let v = sys::seal_view(&state).await?;
+    if !v.initialized {
+        return Ok(Redirect::to("/gui/unseal").into_response());
+    }
+    if !v.sealed {
+        return Ok(Redirect::to("/gui/").into_response());
+    }
+    match sys::add_unseal_share(&state, &form.key).await {
+        Ok(()) => {
+            let after = sys::seal_view(&state).await?;
+            if after.sealed {
+                Ok(Html(pages::unseal_page(after.progress, after.threshold, None)).into_response())
+            } else {
+                Ok(Redirect::to("/gui/").into_response())
+            }
+        }
+        Err(AppError::BadRequest(msg)) => {
+            let after = sys::seal_view(&state).await?;
+            Ok((StatusCode::BAD_REQUEST, Html(pages::unseal_page(after.progress, after.threshold, Some(&msg)))).into_response())
+        }
+        Err(e) => Err(e),
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

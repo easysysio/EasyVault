@@ -90,6 +90,68 @@ pub fn layout(title: &str, user: Option<&str>, body: &str) -> String {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// unseal_init_page
+// First-run initialization form (choose share/threshold counts).
+// ─────────────────────────────────────────────────────────────────────────────
+pub fn unseal_init_page(error: Option<&str>) -> String {
+    let err = error.map(|e| format!("<div class=\"err\">{}</div>", escape(e))).unwrap_or_default();
+    let body = format!(
+        "<div class=\"card\"><h1>Initialize EasyVault</h1>\
+         <p class=\"muted\">This generates the master key and splits it into unseal shares. \
+         It runs once. The shares are shown only on the next screen — save them.</p>{err}\
+         <form method=\"post\" action=\"/gui/unseal/init\">\
+         <label>Number of key shares</label><input name=\"shares\" type=\"number\" min=\"1\" value=\"5\">\
+         <label>Shares required to unseal (threshold)</label><input name=\"threshold\" type=\"number\" min=\"1\" value=\"3\">\
+         <button type=\"submit\">Initialize</button></form></div>"
+    );
+    layout("Initialize", None, &body)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// unseal_shares_page
+// One-time display of the generated unseal shares (must be saved now).
+// ─────────────────────────────────────────────────────────────────────────────
+pub fn unseal_shares_page(keys: &[String], threshold: usize) -> String {
+    let mut list = String::new();
+    for (i, k) in keys.iter().enumerate() {
+        list.push_str(&format!(
+            "<div class=\"kv\" style=\"margin-bottom:8px\"><div class=\"k\">Share {}</div>\
+             <div class=\"v\" style=\"font-family:ui-monospace,monospace;word-break:break-all\">{}</div></div>",
+            i + 1,
+            escape(k),
+        ));
+    }
+    let body = format!(
+        "<div class=\"card\"><h1>Save your unseal shares</h1>\
+         <div class=\"err\">Copy these now — they are shown only once. You need any {threshold} of them \
+         to unseal after every restart. Lose them and the data is unrecoverable; anyone with {threshold} \
+         can unseal the instance.</div>{list}\
+         <a href=\"/gui/unseal\"><button type=\"button\">I've saved them — continue to unseal</button></a></div>",
+        threshold = threshold,
+        list = list,
+    );
+    layout("Unseal shares", None, &body)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// unseal_page
+// Sealed-state screen: submit one share at a time with a progress indicator.
+// ─────────────────────────────────────────────────────────────────────────────
+pub fn unseal_page(progress: usize, threshold: i64, error: Option<&str>) -> String {
+    let err = error.map(|e| format!("<div class=\"err\">{}</div>", escape(e))).unwrap_or_default();
+    let body = format!(
+        "<div class=\"card\"><h1>EasyVault is sealed</h1>\
+         <p class=\"muted\">Submit unseal shares one at a time. Progress: <strong>{progress} / {threshold}</strong>.</p>{err}\
+         <form method=\"post\" action=\"/gui/unseal\">\
+         <label>Unseal share</label><input name=\"key\" autofocus required autocomplete=\"off\">\
+         <button type=\"submit\">Submit share</button></form></div>",
+        progress = progress,
+        threshold = threshold,
+    );
+    layout("Unseal", None, &body)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // setup_page
 // First-run page to create the initial master user.
 // ─────────────────────────────────────────────────────────────────────────────

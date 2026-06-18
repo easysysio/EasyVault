@@ -88,36 +88,45 @@ pub struct InitResponse {
     pub threshold: u8,
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// POST /v1/sys/init
-// Generate the master key, split it into Shamir shares, and store the
-// verification ciphertext. Returns the shares once; instance stays sealed.
-// ─────────────────────────────────────────────────────────────────────────────
-pub async fn init(
-    State(state): State<Arc<AppState>>,
-    body: Option<Json<InitRequest>>,
-) -> Result<Json<InitResponse>, AppError> {
-    let req = body.map(|Json(b)| b).unwrap_or_default();
+/// Public snapshot of seal state, for the GUI and status handlers.
+pub struct SealView {
+    pub initialized: bool,
+    pub sealed: bool,
+    pub threshold: i64,
+    pub shares: i64,
+    pub progress: usize,
+}
 
-    let existing = load_init_row(&state.db).await?;
-    if existing.initialized {
+// ─────────────────────────────────────────────────────────────────────────────
+// seal_view
+// Current initialization / seal / unseal-progress snapshot.
+// ─────────────────────────────────────────────────────────────────────────────
+pub async fn seal_view(state: &Arc<AppState>) -> Result<SealView, AppError> {
+    let row = load_init_row(&state.db).await?;
+    Ok(SealView {
+        initialized: row.initialized,
+        sealed: state.is_sealed().await,
+        threshold: row.key_threshold.unwrap_or(0),
+        shares: row.key_shares.unwrap_or(0),
+        progress: state.unseal_progress.read().await.len(),
+    })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// perform_init
+// Core init: generate the master key, seal the verification constant, Shamir-
+// split, persist. Returns the base64 shares (shown once). Shared by API + GUI.
+// ─────────────────────────────────────────────────────────────────────────────
+pub async fn perform_init(state: &Arc<AppState>, shares: u8, threshold: u8) -> Result<Vec<String>, AppError> {
+    if load_init_row(&state.db).await?.initialized {
         return Err(AppError::BadRequest("EasyVault is already initialized".into()));
     }
-
-    let shares = req.secret_shares.unwrap_or(state.config.init.default_key_shares);
-    let threshold = req.secret_threshold.unwrap_or(state.config.init.default_key_threshold);
     if threshold == 0 || shares == 0 || threshold > shares {
-        return Err(AppError::BadRequest(
-            "secret_threshold must be between 1 and secret_shares".into(),
-        ));
+        return Err(AppError::BadRequest("secret_threshold must be between 1 and secret_shares".into()));
     }
 
-    // Generate the master key and seal the verification constant under it.
     let master = crypto::random_key();
-    let (nonce, enc) = aes::encrypt(&master, UNSEAL_VERIFICATION)
-        .map_err(|e| AppError::Internal(e.to_string()))?;
-
-    // Split the master key; the raw bytes never persist.
+    let (nonce, enc) = aes::encrypt(&master, UNSEAL_VERIFICATION).map_err(|e| AppError::Internal(e.to_string()))?;
     let share_bytes = shamir::split(&master, shares, threshold);
     let keys_base64: Vec<String> = share_bytes.iter().map(|s| B64.encode(s)).collect();
 
@@ -133,10 +142,89 @@ pub async fn init(
     .await?;
 
     tracing::info!(shares, threshold, "EasyVault initialized");
+    Ok(keys_base64)
+}
 
+// ─────────────────────────────────────────────────────────────────────────────
+// add_unseal_share
+// Core unseal step: record one base64 share and, once the threshold is reached,
+// reconstruct + verify the master key and mark the instance unsealed. Shared by
+// API + GUI. No-op (Ok) when already unsealed.
+// ─────────────────────────────────────────────────────────────────────────────
+pub async fn add_unseal_share(state: &Arc<AppState>, key_b64: &str) -> Result<(), AppError> {
+    let row = load_init_row(&state.db).await?;
+    if !row.initialized {
+        return Err(AppError::Uninitialized);
+    }
+    if !state.is_sealed().await {
+        return Ok(());
+    }
+
+    let share = B64
+        .decode(key_b64.trim())
+        .map_err(|_| AppError::BadRequest("share is not valid base64".into()))?;
+    let threshold = row.key_threshold.unwrap_or(0) as usize;
+
+    let collected = {
+        let mut progress = state.unseal_progress.write().await;
+        progress.push(share);
+        progress.clone()
+    };
+    if collected.len() < threshold {
+        return Ok(());
+    }
+
+    let recovered = match shamir::combine(threshold as u8, &collected) {
+        Ok(r) if r.len() == crypto::KEY_LEN => r,
+        _ => {
+            state.unseal_progress.write().await.clear();
+            return Err(AppError::BadRequest("unseal failed: invalid shares".into()));
+        }
+    };
+    let mut master = [0u8; crypto::KEY_LEN];
+    master.copy_from_slice(&recovered);
+
+    let enc = row.master_key_enc.ok_or_else(|| AppError::Internal("missing verification ciphertext".into()))?;
+    let nonce_vec = row.master_key_nonce.ok_or_else(|| AppError::Internal("missing verification nonce".into()))?;
+    if nonce_vec.len() != crypto::NONCE_LEN {
+        return Err(AppError::Internal("corrupt verification nonce".into()));
+    }
+    let mut nonce = [0u8; crypto::NONCE_LEN];
+    nonce.copy_from_slice(&nonce_vec);
+
+    match aes::decrypt(&master, &nonce, &enc) {
+        Ok(plain) if plain == UNSEAL_VERIFICATION => {
+            *state.master_key.write().await = Some(MasterKey::new(master));
+            state.unseal_progress.write().await.clear();
+            sqlx::query("UPDATE system_init SET sealed = 0 WHERE id = 1")
+                .execute(&state.db)
+                .await?;
+            tracing::info!("EasyVault unsealed");
+            Ok(())
+        }
+        _ => {
+            state.unseal_progress.write().await.clear();
+            Err(AppError::BadRequest("unseal failed: shares did not reconstruct the master key".into()))
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /v1/sys/init
+// Generate the master key, split it into Shamir shares, and store the
+// verification ciphertext. Returns the shares once; instance stays sealed.
+// ─────────────────────────────────────────────────────────────────────────────
+pub async fn init(
+    State(state): State<Arc<AppState>>,
+    body: Option<Json<InitRequest>>,
+) -> Result<Json<InitResponse>, AppError> {
+    let req = body.map(|Json(b)| b).unwrap_or_default();
+    let shares = req.secret_shares.unwrap_or(state.config.init.default_key_shares);
+    let threshold = req.secret_threshold.unwrap_or(state.config.init.default_key_threshold);
+    let keys = perform_init(&state, shares, threshold).await?;
     Ok(Json(InitResponse {
-        keys: keys_base64.clone(),
-        keys_base64,
+        keys: keys.clone(),
+        keys_base64: keys,
         shares,
         threshold,
     }))
@@ -182,61 +270,10 @@ pub async fn unseal(
     let key_b64 = req
         .key
         .ok_or_else(|| AppError::BadRequest("missing 'key' share".into()))?;
-    let share = B64
-        .decode(key_b64.trim())
-        .map_err(|_| AppError::BadRequest("share is not valid base64".into()))?;
+    add_unseal_share(&state, &key_b64).await?;
 
-    let threshold = row.key_threshold.unwrap_or(0) as usize;
-
-    // Record the share, then attempt reconstruction if we have enough.
-    let collected = {
-        let mut progress = state.unseal_progress.write().await;
-        progress.push(share);
-        progress.clone()
-    };
-
-    if collected.len() < threshold {
-        return Ok(seal_status_json(&state, &row).await.into_response());
-    }
-
-    // Reconstruct the candidate master key and verify it. Any failure from here
-    // on discards accumulated shares so the operator restarts cleanly.
-    let recovered = match shamir::combine(threshold as u8, &collected) {
-        Ok(r) if r.len() == crypto::KEY_LEN => r,
-        _ => {
-            state.unseal_progress.write().await.clear();
-            return Err(AppError::BadRequest("unseal failed: invalid shares".into()));
-        }
-    };
-    let mut master = [0u8; crypto::KEY_LEN];
-    master.copy_from_slice(&recovered);
-
-    // Decrypt the verification constant to confirm the key is correct.
-    let enc = row.master_key_enc.ok_or_else(|| AppError::Internal("missing verification ciphertext".into()))?;
-    let nonce_vec = row.master_key_nonce.ok_or_else(|| AppError::Internal("missing verification nonce".into()))?;
-    let mut nonce = [0u8; crypto::NONCE_LEN];
-    if nonce_vec.len() != crypto::NONCE_LEN {
-        return Err(AppError::Internal("corrupt verification nonce".into()));
-    }
-    nonce.copy_from_slice(&nonce_vec);
-
-    match aes::decrypt(&master, &nonce, &enc) {
-        Ok(plain) if plain == UNSEAL_VERIFICATION => {
-            // Success: install the master key and mark unsealed.
-            *state.master_key.write().await = Some(MasterKey::new(master));
-            state.unseal_progress.write().await.clear();
-            sqlx::query("UPDATE system_init SET sealed = 0 WHERE id = 1")
-                .execute(&state.db)
-                .await?;
-            tracing::info!("EasyVault unsealed");
-            let fresh = load_init_row(&state.db).await?;
-            Ok(seal_status_json(&state, &fresh).await.into_response())
-        }
-        _ => {
-            state.unseal_progress.write().await.clear();
-            Err(AppError::BadRequest("unseal failed: shares did not reconstruct the master key".into()))
-        }
-    }
+    let fresh = load_init_row(&state.db).await?;
+    Ok(seal_status_json(&state, &fresh).await.into_response())
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

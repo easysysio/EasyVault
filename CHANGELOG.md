@@ -5,6 +5,20 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — Browser init / unseal flow
+- **`/gui/unseal`** — no more curl for the unseal lifecycle. A sealed or
+  uninitialized instance now redirects the GUI here:
+  - **Uninitialized** → an Initialize form (share/threshold counts) → a
+    one-time **shares** screen to save, with a clear warning.
+  - **Sealed** → submit unseal shares one at a time with a `progress / threshold`
+    indicator; once the threshold is met you're dropped into the app.
+- `gui_root` now steers to `/gui/unseal` before setup/login when the instance
+  isn't usable yet, so the whole bootstrap (initialize → unseal → create master
+  account → log in) is clickable.
+- Refactored the init/unseal core out of the JSON handlers (`sys::perform_init`,
+  `sys::add_unseal_share`, `sys::seal_view`) so the API and GUI share one path;
+  the `/v1/sys/*` JSON endpoints are unchanged.
+
 ### Added — TLS (HTTPS)
 - **HTTPS support** (`axum-server` + rustls, `tls.rs`). Set `server.tls = true`
   to serve over TLS. If `tls_cert`/`tls_key` are set they're loaded; otherwise a
