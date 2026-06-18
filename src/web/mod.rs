@@ -20,6 +20,7 @@ use zeroize::Zeroize;
 use crate::auth::session::{self, SessionIdentity, SessionKeys};
 use crate::error::AppError;
 use crate::state::AppState;
+use crate::vault::Role;
 use crate::{secrets, users, vault};
 
 pub mod pages;
@@ -85,7 +86,7 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/gui/vaults/new", get(vault_new_form))
         .route("/gui/vaults", post(vault_create))
         .route("/gui/vaults/{id}", get(vault_detail))
-        .route("/gui/vaults/{id}/grant", post(vault_grant))
+        .route("/gui/vaults/{id}/assign", post(vault_assign))
         .route("/gui/vaults/{id}/revoke", post(vault_revoke))
         .route("/gui/vaults/{id}/secret", get(secret_view).post(secret_write))
         .route("/gui/vaults/{id}/secret/new", get(secret_new_form))
@@ -105,8 +106,13 @@ async fn gui_root(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Res
     };
 
     let sealed = state.is_sealed().await;
-    let vaults: Vec<pages::VaultListItem> = vault::list_for_user(&state.db, &id.user_id)
-        .await?
+    // Master manages every vault (but is blind to contents); others see only theirs.
+    let rows = if id.is_master {
+        vault::list_all(&state.db).await?
+    } else {
+        vault::list_for_user(&state.db, &id.user_id).await?
+    };
+    let vaults: Vec<pages::VaultListItem> = rows
         .into_iter()
         .map(|v| pages::VaultListItem { id: v.id, name: v.name, description: v.description })
         .collect();
@@ -209,10 +215,11 @@ pub struct VaultForm {
     pub description: String,
 }
 
-/// Grant-access form fields.
+/// Assign-access form fields (username + role).
 #[derive(Debug, Deserialize)]
-pub struct GrantForm {
+pub struct AssignForm {
     pub username: String,
+    pub role: String,
 }
 
 /// Revoke-access form fields.
@@ -268,6 +275,47 @@ async fn users_create(
     }
 }
 
+/// A user's effective capabilities for one vault (global master + per-vault role).
+struct Access {
+    is_master: bool,
+    role: Option<Role>,
+}
+impl Access {
+    /// May read secret values (a per-vault role; master is blind).
+    fn can_read(&self) -> bool {
+        self.role.map(Role::can_read).unwrap_or(false)
+    }
+    /// May create/update secrets and tokens (editor or admin).
+    fn can_write(&self) -> bool {
+        self.role.map(Role::can_write).unwrap_or(false)
+    }
+    /// May assign/revoke users (global master or vault admin).
+    fn can_assign(&self) -> bool {
+        self.is_master || self.role.map(Role::can_assign).unwrap_or(false)
+    }
+    /// May open the vault page at all (master for management, or any member).
+    fn can_view(&self) -> bool {
+        self.is_master || self.role.is_some()
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// load_access
+// Resolve the caller's capabilities for a vault from their global + per-vault role.
+// ─────────────────────────────────────────────────────────────────────────────
+async fn load_access(state: &Arc<AppState>, keys: &SessionKeys, vault_id: &str) -> Result<Access, AppError> {
+    let role = vault::get_user_role(&state.db, vault_id, &keys.user_id).await?;
+    Ok(Access { is_master: keys.is_master, role })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// master_key
+// Copy the in-memory master key, or fail with Sealed when locked.
+// ─────────────────────────────────────────────────────────────────────────────
+async fn master_key(state: &Arc<AppState>) -> Result<zeroize::Zeroizing<[u8; 32]>, AppError> {
+    state.master_key_bytes().await.ok_or(AppError::Sealed)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /gui/vaults/new
 // Master-only form to create a vault.
@@ -292,7 +340,8 @@ async fn vault_create(
     guard!(unsealed state, &keys);
     guard!(master &keys);
 
-    match vault::create_vault(&state.db, &form.name, &form.description, &keys.user_id, &keys.private_key, &keys.public_key).await {
+    let mk = master_key(&state).await?;
+    match vault::create_vault(&state.db, &form.name, &form.description, &keys.user_id, &mk).await {
         Ok(id) => Ok(Redirect::to(&format!("/gui/vaults/{id}")).into_response()),
         Err(AppError::BadRequest(msg)) => {
             Ok((StatusCode::BAD_REQUEST, Html(pages::vault_create_page(&keys.username, Some(&msg)))).into_response())
@@ -316,20 +365,28 @@ async fn vault_detail(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POST /gui/vaults/{id}/grant
-// Master grants another user access to the vault (crypto Flow 4).
+// POST /gui/vaults/{id}/assign
+// Master or vault admin assigns a user a role; the server re-wraps the vault key
+// via master escrow + ephemeral ECDH (crypto Flow 4, escrow variant).
 // ─────────────────────────────────────────────────────────────────────────────
-async fn vault_grant(
+async fn vault_assign(
     State(state): State<Arc<AppState>>,
     Path(vault_id): Path<String>,
     headers: HeaderMap,
-    Form(form): Form<GrantForm>,
+    Form(form): Form<AssignForm>,
 ) -> Result<Response, AppError> {
     let keys = guard!(auth state headers);
     guard!(unsealed state, &keys);
-    guard!(master &keys);
+    let access = load_access(&state, &keys, &vault_id).await?;
+    if !access.can_assign() {
+        return Ok(access_denied(&keys));
+    }
+    let Some(role) = Role::parse(form.role.trim()) else {
+        return render_vault_detail(&state, &keys, &vault_id, Some("Invalid role.")).await;
+    };
 
-    match vault::grant(&state.db, &vault_id, &keys.user_id, &keys.private_key, &keys.public_key, &form.username).await {
+    let mk = master_key(&state).await?;
+    match vault::assign(&state.db, &vault_id, &mk, &form.username, role, &keys.user_id).await {
         Ok(()) => Ok(Redirect::to(&format!("/gui/vaults/{vault_id}")).into_response()),
         Err(AppError::BadRequest(msg)) => render_vault_detail(&state, &keys, &vault_id, Some(&msg)).await,
         Err(e) => Err(e),
@@ -338,7 +395,7 @@ async fn vault_grant(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /gui/vaults/{id}/revoke
-// Master removes a user's vault access (key rotation pending — see vault::revoke).
+// Master or vault admin removes a user's access (key rotation pending — Flow 9).
 // ─────────────────────────────────────────────────────────────────────────────
 async fn vault_revoke(
     State(state): State<Arc<AppState>>,
@@ -348,8 +405,10 @@ async fn vault_revoke(
 ) -> Result<Response, AppError> {
     let keys = guard!(auth state headers);
     guard!(unsealed state, &keys);
-    guard!(master &keys);
-
+    let access = load_access(&state, &keys, &vault_id).await?;
+    if !access.can_assign() {
+        return Ok(access_denied(&keys));
+    }
     vault::revoke(&state.db, &vault_id, &form.user_id).await?;
     Ok(Redirect::to(&format!("/gui/vaults/{vault_id}")).into_response())
 }
@@ -367,7 +426,7 @@ async fn secret_new_form(
     let keys = guard!(auth state headers);
     guard!(unsealed state, &keys);
     let Some(v) = vault::get(&state.db, &vault_id).await? else { return Ok(not_found(&keys)); };
-    if !vault::user_has_access(&state.db, &vault_id, &keys.user_id).await? {
+    if !load_access(&state, &keys, &vault_id).await?.can_write() {
         return Ok(access_denied(&keys));
     }
     Ok(Html(pages::secret_new_page(&keys.username, &vault_id, &v.name, None, &q.path, "")).into_response())
@@ -386,6 +445,9 @@ async fn secret_write(
     let keys = guard!(auth state headers);
     guard!(unsealed state, &keys);
     let Some(v) = vault::get(&state.db, &vault_id).await? else { return Ok(not_found(&keys)); };
+    if !load_access(&state, &keys, &vault_id).await?.can_write() {
+        return Ok(access_denied(&keys));
+    }
 
     // Parse the submitted data as a JSON value.
     let value: serde_json::Value = match serde_json::from_str(form.data.trim()) {
@@ -431,6 +493,9 @@ async fn secret_view(
     let keys = guard!(auth state headers);
     guard!(unsealed state, &keys);
     let Some(v) = vault::get(&state.db, &vault_id).await? else { return Ok(not_found(&keys)); };
+    if !load_access(&state, &keys, &vault_id).await?.can_read() {
+        return Ok(access_denied(&keys));
+    }
 
     let mut vault_key = match vault::resolve_vault_key(&state.db, &vault_id, &keys.user_id, &keys.private_key).await {
         Ok(k) => k,
@@ -461,7 +526,7 @@ async fn secret_delete(
 ) -> Result<Response, AppError> {
     let keys = guard!(auth state headers);
     guard!(unsealed state, &keys);
-    if !vault::user_has_access(&state.db, &vault_id, &keys.user_id).await? {
+    if !load_access(&state, &keys, &vault_id).await?.can_write() {
         return Ok(access_denied(&keys));
     }
     secrets::soft_delete(&state.db, &vault_id, &form.path).await?;
@@ -479,22 +544,30 @@ async fn render_vault_detail(
     error: Option<&str>,
 ) -> Result<Response, AppError> {
     let Some(v) = vault::get(&state.db, vault_id).await? else { return Ok(not_found(keys)); };
-    if !vault::user_has_access(&state.db, vault_id, &keys.user_id).await? {
+    let access = load_access(state, keys, vault_id).await?;
+    if !access.can_view() {
         return Ok(access_denied(keys));
     }
-    let secret_list = secrets::list_paths(&state.db, vault_id).await?;
+    // The blind master never sees secret paths — only members can read those.
+    let secret_list = if access.can_read() {
+        secrets::list_paths(&state.db, vault_id).await?
+    } else {
+        Vec::new()
+    };
     let members = vault::members(&state.db, vault_id).await?;
-    Ok(Html(pages::vault_detail_page(
-        &keys.username,
-        keys.is_master,
+    Ok(Html(pages::vault_detail_page(pages::VaultDetail {
+        username: &keys.username,
         vault_id,
-        &v.name,
-        v.description.as_deref().unwrap_or(""),
-        &secret_list,
-        &members,
-        &keys.user_id,
+        vault_name: &v.name,
+        description: v.description.as_deref().unwrap_or(""),
+        secrets: &secret_list,
+        members: &members,
+        current_user_id: &keys.user_id,
+        can_read: access.can_read(),
+        can_write: access.can_write(),
+        can_assign: access.can_assign(),
         error,
-    ))
+    }))
     .into_response())
 }
 

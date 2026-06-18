@@ -5,6 +5,25 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed — Increment 2c (roles + master-key escrow)
+- **Per-vault roles** — `vault_user_keys` gains a `role` column
+  (`viewer` < `editor` < `admin`). Capabilities: viewer reads; editor reads +
+  writes secrets + (later) creates tokens; admin additionally assigns users.
+- **Blind master** — the global `master` manages vaults/users and assigns
+  access but can **no longer read secrets**. Vault creation stores the vault key
+  escrowed under the master key and gives master **no** membership row; the
+  GUI hides secret contents/paths from master (separation of duties).
+- **Server-side key distribution** (migration 002) — `vaults` gains
+  `vault_key_enc_master` (= `AES-GCM(vault_key, master_key)`). Assignment
+  (`vault::assign`) recovers the vault key from this escrow and re-wraps it for
+  the target user via a fresh **ephemeral X25519 ECDH** keypair, stamped with a
+  role. Replaces the old user-to-user `grant`. Works for both master and vault
+  admins; re-assigning an existing member just changes their role.
+- **Capability enforcement** — write/token = editor|admin; assign/revoke =
+  master|vault-admin; vault/user creation = master. Verified end-to-end:
+  blind-master 403s, editor write+read, viewer read-only, admin-can-assign,
+  role-change upsert, per-vault admin ≠ global master.
+
 ### Added — Increment 2b (vaults, secrets, secret-browser GUI)
 - **Vault layer** (`vault/mod.rs`) — `create_vault` (crypto Flow 3: random
   vault_key wrapped for the creator via self-ECDH), `list_for_user`, `get`,

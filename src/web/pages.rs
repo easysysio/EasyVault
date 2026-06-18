@@ -239,102 +239,136 @@ pub fn vault_create_page(username: &str, error: Option<&str>) -> String {
     layout("New vault", Some(username), &body)
 }
 
+/// Inputs for `vault_detail_page` — grouped to keep the call site readable.
+pub struct VaultDetail<'a> {
+    pub username: &'a str,
+    pub vault_id: &'a str,
+    pub vault_name: &'a str,
+    pub description: &'a str,
+    pub secrets: &'a [crate::secrets::SecretListing],
+    pub members: &'a [crate::vault::VaultMember],
+    pub current_user_id: &'a str,
+    pub can_read: bool,
+    pub can_write: bool,
+    pub can_assign: bool,
+    pub error: Option<&'a str>,
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // vault_detail_page
-// Vault view: secret listing, member list (+ grant/revoke for master), and a
-// link to add a secret.
+// Vault view, rendered by capability: a reader sees the secret list; a blind
+// master sees only the member list; an assigner gets the role grant/revoke UI.
 // ─────────────────────────────────────────────────────────────────────────────
-#[allow(clippy::too_many_arguments)]
-pub fn vault_detail_page(
-    username: &str,
-    is_master: bool,
-    vault_id: &str,
-    vault_name: &str,
-    description: &str,
-    secrets: &[crate::secrets::SecretListing],
-    members: &[crate::vault::VaultMember],
-    current_user_id: &str,
-    error: Option<&str>,
-) -> String {
-    let err = error.map(|e| format!("<div class=\"err\">{}</div>", escape(e))).unwrap_or_default();
+pub fn vault_detail_page(d: VaultDetail<'_>) -> String {
+    let err = d.error.map(|e| format!("<div class=\"err\">{}</div>", escape(e))).unwrap_or_default();
 
-    // Secret listing.
-    let secret_rows = if secrets.is_empty() {
-        "<p class=\"muted\">No secrets yet.</p>".to_string()
+    // Secrets card — only for users who can read this vault.
+    let secrets_card = if d.can_read {
+        let secret_rows = if d.secrets.is_empty() {
+            "<p class=\"muted\">No secrets yet.</p>".to_string()
+        } else {
+            let mut s = String::from("<table><tr><th>Path</th><th>Version</th><th></th></tr>");
+            for sec in d.secrets {
+                let href = format!("/gui/vaults/{}/secret?path={}", escape(d.vault_id), urlencode(&sec.path));
+                s.push_str(&format!(
+                    "<tr><td>{path}</td><td>v{ver}</td><td><a href=\"{href}\">view</a></td></tr>",
+                    path = escape(&sec.path),
+                    ver = sec.version,
+                    href = href,
+                ));
+            }
+            s.push_str("</table>");
+            s
+        };
+        let add = if d.can_write {
+            format!("<a href=\"/gui/vaults/{}/secret/new\"><button type=\"button\">Add secret</button></a>", escape(d.vault_id))
+        } else {
+            String::new()
+        };
+        format!(
+            "<div class=\"card\"><div style=\"display:flex;justify-content:space-between;align-items:center\">\
+             <h2 style=\"margin:0\">Secrets</h2>{add}</div>{rows}</div>",
+            add = add,
+            rows = secret_rows,
+        )
     } else {
-        let mut s = String::from("<table><tr><th>Path</th><th>Version</th><th></th></tr>");
-        for sec in secrets {
-            let href = format!("/gui/vaults/{}/secret?path={}", escape(vault_id), urlencode(&sec.path));
-            s.push_str(&format!(
-                "<tr><td>{path}</td><td>v{ver}</td><td><a href=\"{href}\">view</a></td></tr>",
-                path = escape(&sec.path),
-                ver = sec.version,
-                href = href,
-            ));
-        }
-        s.push_str("</table>");
-        s
+        "<div class=\"card\"><h2>Secrets</h2>\
+         <p class=\"muted\">You manage access to this vault but cannot read its secret contents.</p></div>"
+            .to_string()
     };
 
-    // Member listing (+ revoke for master, except self).
-    let mut member_rows = String::from("<table><tr><th>User</th><th>Granted</th><th></th></tr>");
-    for m in members {
-        let revoke = if is_master && m.user_id != current_user_id {
+    // Member listing, with role and (for assigners) a revoke control.
+    let mut member_rows = String::from("<table><tr><th>User</th><th>Role</th><th>Granted</th><th></th></tr>");
+    for m in d.members {
+        let revoke = if d.can_assign && m.user_id != d.current_user_id {
             format!(
                 "<form method=\"post\" action=\"/gui/vaults/{vid}/revoke\" style=\"margin:0\">\
                  <input type=\"hidden\" name=\"user_id\" value=\"{uid}\">\
                  <button class=\"link\" type=\"submit\">revoke</button></form>",
-                vid = escape(vault_id),
+                vid = escape(d.vault_id),
                 uid = escape(&m.user_id),
             )
         } else {
             String::new()
         };
         member_rows.push_str(&format!(
-            "<tr><td>{user}</td><td class=\"muted\">{granted}</td><td>{revoke}</td></tr>",
+            "<tr><td>{user}</td><td>{role}</td><td class=\"muted\">{granted}</td><td>{revoke}</td></tr>",
             user = escape(&m.username),
+            role = role_badge(&m.role),
             granted = escape(&m.granted_at),
             revoke = revoke,
         ));
     }
     member_rows.push_str("</table>");
 
-    let grant_form = if is_master {
+    // Assign form (username + role) for master / vault admins.
+    let assign_form = if d.can_assign {
         format!(
-            "<form method=\"post\" action=\"/gui/vaults/{vid}/grant\" \
+            "<form method=\"post\" action=\"/gui/vaults/{vid}/assign\" \
              style=\"display:flex;gap:8px;align-items:flex-end;margin-top:8px\">\
-             <div style=\"flex:1\"><label style=\"margin-top:0\">Grant access to username</label>\
+             <div style=\"flex:1\"><label style=\"margin-top:0\">Assign username</label>\
              <input name=\"username\" required></div>\
-             <button type=\"submit\" style=\"margin:0\">Grant</button></form>",
-            vid = escape(vault_id)
+             <div><label style=\"margin-top:0\">Role</label>\
+             <select name=\"role\" style=\"padding:10px 12px;border:1px solid #30363d;border-radius:7px;\
+             background:#0e1116;color:#e6edf3\">\
+             <option value=\"viewer\">viewer</option>\
+             <option value=\"editor\">editor</option>\
+             <option value=\"admin\">admin</option></select></div>\
+             <button type=\"submit\" style=\"margin:0\">Assign</button></form>",
+            vid = escape(d.vault_id)
         )
     } else {
         String::new()
     };
 
-    let desc_html = if description.is_empty() {
+    let desc_html = if d.description.is_empty() {
         String::new()
     } else {
-        format!("<p class=\"muted\">{}</p>", escape(description))
+        format!("<p class=\"muted\">{}</p>", escape(d.description))
     };
 
     let body = format!(
         "<p><a href=\"/gui/\">&larr; Dashboard</a></p>{err}\
          <div class=\"card\"><h1>{name}</h1>{desc}</div>\
-         <div class=\"card\"><div style=\"display:flex;justify-content:space-between;align-items:center\">\
-         <h2 style=\"margin:0\">Secrets</h2>\
-         <a href=\"/gui/vaults/{vid}/secret/new\"><button type=\"button\">Add secret</button></a></div>\
-         {secret_rows}</div>\
-         <div class=\"card\"><h2>Access</h2>{member_rows}{grant_form}</div>",
+         {secrets_card}\
+         <div class=\"card\"><h2>Access</h2>{member_rows}{assign_form}</div>",
         err = err,
-        name = escape(vault_name),
+        name = escape(d.vault_name),
         desc = desc_html,
-        vid = escape(vault_id),
-        secret_rows = secret_rows,
+        secrets_card = secrets_card,
         member_rows = member_rows,
-        grant_form = grant_form,
+        assign_form = assign_form,
     );
-    layout(vault_name, Some(username), &body)
+    layout(d.vault_name, Some(d.username), &body)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// role_badge
+// Render a per-vault role string as a coloured pill.
+// ─────────────────────────────────────────────────────────────────────────────
+fn role_badge(role: &str) -> String {
+    let cls = if role == "viewer" { "warn" } else { "ok" };
+    format!("<span class=\"pill {}\">{}</span>", cls, escape(role))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

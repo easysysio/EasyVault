@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use tokio::sync::RwLock;
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::config::Config;
 
@@ -109,5 +109,14 @@ impl AppState {
     // ─────────────────────────────────────────────────────────────────────────
     pub async fn is_sealed(&self) -> bool {
         self.master_key.read().await.is_none()
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // AppState::master_key_bytes
+    // Copy the master key out under the lock into a zeroizing buffer (None when
+    // sealed). Lets vault crypto run without holding the lock across awaits.
+    // ─────────────────────────────────────────────────────────────────────────
+    pub async fn master_key_bytes(&self) -> Option<Zeroizing<[u8; 32]>> {
+        self.master_key.read().await.as_ref().map(|k| Zeroizing::new(*k.as_bytes()))
     }
 }
