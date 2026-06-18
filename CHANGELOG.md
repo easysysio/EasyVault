@@ -3,7 +3,11 @@
 All notable changes to EasyVault are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.1.0] — 2026-06-18
+
+First release: a self-hosted, HashiCorp Vault–compatible secrets manager with
+envelope encryption, per-vault roles, per-vault API tokens, IP/subnet ACLs, an
+HMAC audit log, vault-key rotation, TLS, and a fully browser-based bootstrap.
 
 ### Added — Browser init / unseal flow
 - **`/gui/unseal`** — no more curl for the unseal lifecycle. A sealed or
@@ -146,12 +150,7 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 - **Crypto helper** — `crypto::sha256_hex` for session/token lookup hashes.
 - `GET /` now redirects to `/gui/` (replaces the placeholder landing page).
 
-## [0.1.0] — 2026-06-17
-
-First foundation increment: a Vault-compatible server that boots **sealed** and
-can be initialized and unsealed.
-
-### Added
+### Added — Foundation (Increment 1)
 - **Project skeleton** — Cargo (edition 2024), Axum 0.8, SQLite via sqlx 0.8.
 - **Config** (`config.rs`) — TOML loading via `$EASYVAULT_CONFIG` (default
   `./config.toml`); all fields default so a missing file still works.
@@ -177,8 +176,9 @@ can be initialized and unsealed.
   - `GET  /v1/sys/health` — 200 active, 503 sealed, 501 uninitialized.
 
 ### Verified
-- 11 crypto unit tests pass.
-- End-to-end: pre-init `health` 501 → `init` (3-of-5) → sealed `health` 503 →
-  three-share `unseal` → `health` 200; re-init rejected with 400.
+- 13 unit tests pass (crypto primitives + ACL matching).
+- End-to-end across the stack: init → unseal → setup → roles/assignment →
+  secret read/write → API-token REST access → IP ACL → audit + tamper detection
+  → key rotation, over both HTTP and TLS.
 
 [0.1.0]: https://github.com/yarivha/EasyVault/releases/tag/v0.1.0
