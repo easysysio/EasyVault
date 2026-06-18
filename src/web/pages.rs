@@ -149,7 +149,8 @@ pub fn dashboard_page(username: &str, is_master: bool, sealed: bool, vaults: &[V
         ""
     };
     let admin_link = if is_master {
-        "<p style=\"margin-top:14px\"><a href=\"/gui/users\">Manage users &rarr;</a></p>"
+        "<p style=\"margin-top:14px\"><a href=\"/gui/users\">Manage users &rarr;</a> &nbsp;·&nbsp; \
+         <a href=\"/gui/audit\">Audit log &rarr;</a></p>"
     } else {
         ""
     };
@@ -248,6 +249,7 @@ pub struct VaultDetail<'a> {
     pub secrets: &'a [crate::secrets::SecretListing],
     pub members: &'a [crate::vault::VaultMember],
     pub current_user_id: &'a str,
+    pub acl_entries: &'a [String],
     pub can_read: bool,
     pub can_write: bool,
     pub can_assign: bool,
@@ -351,19 +353,85 @@ pub fn vault_detail_page(d: VaultDetail<'_>) -> String {
         format!("<p class=\"muted\">{}</p>", escape(d.description))
     };
 
+    // Network ACL card (assigners only): a textarea of IP/CIDR entries.
+    let acl_card = if d.can_assign {
+        let current = d.acl_entries.join("\n");
+        format!(
+            "<div class=\"card\"><h2>Network ACL</h2>\
+             <p class=\"muted\">Restrict which client IPs/subnets may use this vault's tokens. \
+             Blank = no restriction.</p>\
+             <form method=\"post\" action=\"/gui/vaults/{vid}/acl\">\
+             <textarea name=\"entries\" rows=\"3\" style=\"width:100%;font-family:ui-monospace,monospace;\
+             padding:10px;border:1px solid #30363d;border-radius:7px;background:#0e1116;color:#e6edf3\" \
+             placeholder=\"10.0.0.0/8&#10;1.2.3.4\">{current}</textarea>\
+             <button type=\"submit\">Save ACL</button></form></div>",
+            vid = escape(d.vault_id),
+            current = escape(&current),
+        )
+    } else {
+        String::new()
+    };
+
     let body = format!(
         "<p><a href=\"/gui/\">&larr; Dashboard</a></p>{err}\
          <div class=\"card\"><h1>{name}</h1>{desc}</div>\
          {secrets_card}\
-         <div class=\"card\"><h2>Access</h2>{member_rows}{assign_form}</div>",
+         <div class=\"card\"><h2>Access</h2>{member_rows}{assign_form}</div>\
+         {acl_card}",
         err = err,
         name = escape(d.vault_name),
         desc = desc_html,
         secrets_card = secrets_card,
         member_rows = member_rows,
         assign_form = assign_form,
+        acl_card = acl_card,
     );
     layout(d.vault_name, Some(d.username), &body)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// audit_page
+// Master-only audit log viewer; each row shows its HMAC verification status.
+// ─────────────────────────────────────────────────────────────────────────────
+pub fn audit_page(username: &str, rows: &[crate::audit::AuditRow], verified: &[bool]) -> String {
+    let mut body_rows = String::from(
+        "<table><tr><th>Time</th><th>Op</th><th>Vault</th><th>Path</th><th>Actor</th>\
+         <th>Source IP</th><th>Code</th><th>Integrity</th></tr>",
+    );
+    if rows.is_empty() {
+        body_rows.push_str("<tr><td colspan=\"8\" class=\"muted\">No audit events yet.</td></tr>");
+    }
+    for (r, ok) in rows.iter().zip(verified.iter()) {
+        let integrity = if *ok {
+            "<span class=\"pill ok\">ok</span>"
+        } else {
+            "<span class=\"pill warn\">TAMPERED</span>"
+        };
+        let actor = r.actor_hash.as_deref().unwrap_or("—");
+        let actor_short = if actor.len() > 10 { &actor[..10] } else { actor };
+        body_rows.push_str(&format!(
+            "<tr><td class=\"muted\">{ts}</td><td>{op}</td><td class=\"muted\">{vault}</td>\
+             <td>{path}</td><td class=\"muted\">{actor}</td><td class=\"muted\">{ip}</td>\
+             <td>{code}</td><td>{integrity}</td></tr>",
+            ts = escape(&r.timestamp),
+            op = escape(&r.operation),
+            vault = escape(r.vault_id.as_deref().unwrap_or("—")),
+            path = escape(r.path.as_deref().unwrap_or("—")),
+            actor = escape(actor_short),
+            ip = escape(r.source_ip.as_deref().unwrap_or("—")),
+            code = r.response_code.unwrap_or(0),
+            integrity = integrity,
+        ));
+    }
+    body_rows.push_str("</table>");
+    let body = format!(
+        "<p><a href=\"/gui/\">&larr; Dashboard</a></p>\
+         <div class=\"card\"><h1>Audit log</h1>\
+         <p class=\"muted\">Most recent 200 events. Each row is HMAC-signed with a key derived \
+         from the master key.</p>{rows}</div>",
+        rows = body_rows,
+    );
+    layout("Audit log", Some(username), &body)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

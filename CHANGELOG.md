@@ -23,8 +23,25 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
   editor+), with one-time raw-token display.
 - Requires an unsealed instance (master_key reachable) for all token operations.
 - Verified end-to-end: a REST client reads/writes a secret with a token; path
-  ACL, missing/bad token, expiry, and revocation all enforced (403); 11 crypto
-  tests pass. **Still pending for Increment 3: IP/subnet ACL + HMAC audit log.**
+  ACL, missing/bad token, expiry, and revocation all enforced (403).
+
+### Added — Increment 3 (part 2): IP/subnet ACL + HMAC audit log
+- **IP/subnet ACL** (`vault/acl.rs`, `ipnet`) — client IP resolved from the TCP
+  peer (or first `X-Forwarded-For` hop when the peer is a configured trusted
+  proxy). KV requests are checked against both the **token** `allowed_ips` and
+  the **vault** ACL (IPs + CIDRs); empty = no restriction. `ConnectInfo` is now
+  enabled on the server. Vault ACL is editable in the GUI by master/vault-admin.
+- **HMAC audit log** (`audit.rs`) — every KV operation (incl. denials) is
+  recorded with `request_id`, timestamp, op, vault, path, actor, source IP, and
+  result code, plus an **HMAC-SHA256 over the row** keyed by a master-key-derived
+  secret. Secret values are never logged. Master-only viewer at `/gui/audit`
+  shows each row's integrity (ok / TAMPERED via `verify_row`).
+- 2 ACL unit tests added (13 total). Verified: token + vault IP ACL enforcement,
+  editor-cannot-set-ACL (403), audit rows for 200s and 403 denials all verify
+  ok, and a DB-tampered row is flagged TAMPERED in the viewer.
+- **Known limitation:** only the token `/v1/secret/*` path is audited; GUI secret
+  reads/writes are not yet audited (follow-up). Vault-key rotation on revoke
+  (Flow 9) also still pending.
 
 ### Changed — Increment 2c (roles + master-key escrow)
 - **Per-vault roles** — `vault_user_keys` gains a `role` column

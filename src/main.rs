@@ -7,6 +7,7 @@
 // =============================================================================
 
 mod api;
+mod audit;
 mod auth;
 mod config;
 mod crypto;
@@ -51,7 +52,8 @@ async fn main() -> anyhow::Result<()> {
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!(%addr, "EasyVault listening (sealed until /v1/sys/unseal)");
-    axum::serve(listener, app).await?;
+    // ConnectInfo exposes the TCP peer address for IP/subnet ACL enforcement.
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
 
     Ok(())
 }

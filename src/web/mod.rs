@@ -21,7 +21,7 @@ use crate::auth::session::{self, SessionIdentity, SessionKeys};
 use crate::error::AppError;
 use crate::state::AppState;
 use crate::vault::Role;
-use crate::{secrets, tokens, users, vault};
+use crate::{audit, secrets, tokens, users, vault};
 
 pub mod pages;
 
@@ -83,11 +83,13 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/gui/login", get(login_form).post(login_submit))
         .route("/gui/logout", post(logout))
         .route("/gui/users", get(users_list).post(users_create))
+        .route("/gui/audit", get(audit_view))
         .route("/gui/vaults/new", get(vault_new_form))
         .route("/gui/vaults", post(vault_create))
         .route("/gui/vaults/{id}", get(vault_detail))
         .route("/gui/vaults/{id}/assign", post(vault_assign))
         .route("/gui/vaults/{id}/revoke", post(vault_revoke))
+        .route("/gui/vaults/{id}/acl", post(vault_acl_set))
         .route("/gui/vaults/{id}/secret", get(secret_view).post(secret_write))
         .route("/gui/vaults/{id}/secret/new", get(secret_new_form))
         .route("/gui/vaults/{id}/secret/delete", post(secret_delete))
@@ -242,6 +244,13 @@ pub struct SecretForm {
 pub struct PathParam {
     #[serde(default)]
     pub path: String,
+}
+
+/// Vault network-ACL form (newline-separated IP/CIDR entries).
+#[derive(Debug, Deserialize)]
+pub struct AclForm {
+    #[serde(default)]
+    pub entries: String,
 }
 
 /// Token create form fields.
@@ -426,6 +435,42 @@ async fn vault_revoke(
     }
     vault::revoke(&state.db, &vault_id, &form.user_id).await?;
     Ok(Redirect::to(&format!("/gui/vaults/{vault_id}")).into_response())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /gui/vaults/{id}/acl
+// Master or vault admin sets the vault's network ACL (IPs / CIDRs).
+// ─────────────────────────────────────────────────────────────────────────────
+async fn vault_acl_set(
+    State(state): State<Arc<AppState>>,
+    Path(vault_id): Path<String>,
+    headers: HeaderMap,
+    Form(form): Form<AclForm>,
+) -> Result<Response, AppError> {
+    let keys = guard!(auth state headers);
+    guard!(unsealed state, &keys);
+    if !load_access(&state, &keys, &vault_id).await?.can_assign() {
+        return Ok(access_denied(&keys));
+    }
+    let entries = lines_to_vec(&form.entries);
+    match vault::set_acl(&state.db, &vault_id, &entries).await {
+        Ok(()) => Ok(Redirect::to(&format!("/gui/vaults/{vault_id}")).into_response()),
+        Err(AppError::BadRequest(msg)) => render_vault_detail(&state, &keys, &vault_id, Some(&msg)).await,
+        Err(e) => Err(e),
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /gui/audit
+// Master-only audit log viewer with per-row HMAC verification.
+// ─────────────────────────────────────────────────────────────────────────────
+async fn audit_view(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, AppError> {
+    let keys = guard!(auth state headers);
+    guard!(master &keys);
+    let mk = master_key(&state).await?;
+    let rows = audit::list(&state.db, 200).await?;
+    let verified: Vec<bool> = rows.iter().map(|r| audit::verify_row(&mk, r)).collect();
+    Ok(Html(pages::audit_page(&keys.username, &rows, &verified)).into_response())
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -658,6 +703,11 @@ async fn render_vault_detail(
         Vec::new()
     };
     let members = vault::members(&state.db, vault_id).await?;
+    let acl_entries = if access.can_assign() {
+        vault::get_acl(&state.db, vault_id).await?
+    } else {
+        Vec::new()
+    };
     Ok(Html(pages::vault_detail_page(pages::VaultDetail {
         username: &keys.username,
         vault_id,
@@ -666,6 +716,7 @@ async fn render_vault_detail(
         secrets: &secret_list,
         members: &members,
         current_user_id: &keys.user_id,
+        acl_entries: &acl_entries,
         can_read: access.can_read(),
         can_write: access.can_write(),
         can_assign: access.can_assign(),
