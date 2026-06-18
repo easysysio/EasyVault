@@ -281,7 +281,11 @@ pub fn vault_detail_page(d: VaultDetail<'_>) -> String {
             s
         };
         let add = if d.can_write {
-            format!("<a href=\"/gui/vaults/{}/secret/new\"><button type=\"button\">Add secret</button></a>", escape(d.vault_id))
+            format!(
+                "<a href=\"/gui/vaults/{vid}/tokens\"><button type=\"button\" style=\"background:#30363d\">Tokens</button></a> \
+                 <a href=\"/gui/vaults/{vid}/secret/new\"><button type=\"button\">Add secret</button></a>",
+                vid = escape(d.vault_id)
+            )
         } else {
             String::new()
         };
@@ -369,6 +373,107 @@ pub fn vault_detail_page(d: VaultDetail<'_>) -> String {
 fn role_badge(role: &str) -> String {
     let cls = if role == "viewer" { "warn" } else { "ok" };
     format!("<span class=\"pill {}\">{}</span>", cls, escape(role))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// tokens_page
+// Per-vault API token management: list existing tokens + a create form.
+// ─────────────────────────────────────────────────────────────────────────────
+pub fn tokens_page(
+    username: &str,
+    vault_id: &str,
+    vault_name: &str,
+    tokens: &[crate::tokens::TokenListing],
+    can_create: bool,
+    error: Option<&str>,
+) -> String {
+    let err = error.map(|e| format!("<div class=\"err\">{}</div>", escape(e))).unwrap_or_default();
+
+    let mut rows = String::from(
+        "<table><tr><th>Name</th><th>Paths</th><th>IPs</th><th>Expires</th><th>Last used</th><th>State</th><th></th></tr>",
+    );
+    if tokens.is_empty() {
+        rows.push_str("<tr><td colspan=\"7\" class=\"muted\">No tokens yet.</td></tr>");
+    }
+    for t in tokens {
+        let state = if t.revoked {
+            "<span class=\"pill warn\">revoked</span>"
+        } else {
+            "<span class=\"pill ok\">active</span>"
+        };
+        let revoke = if can_create && !t.revoked {
+            format!(
+                "<form method=\"post\" action=\"/gui/vaults/{vid}/tokens/{tid}/revoke\" style=\"margin:0\">\
+                 <button class=\"link\" type=\"submit\">revoke</button></form>",
+                vid = escape(vault_id),
+                tid = escape(&t.id),
+            )
+        } else {
+            String::new()
+        };
+        rows.push_str(&format!(
+            "<tr><td>{name}</td><td class=\"muted\">{paths}</td><td class=\"muted\">{ips}</td>\
+             <td class=\"muted\">{exp}</td><td class=\"muted\">{used}</td><td>{state}</td><td>{revoke}</td></tr>",
+            name = escape(t.display_name.as_deref().unwrap_or("—")),
+            paths = escape(&t.allowed_paths),
+            ips = escape(if t.allowed_ips == "[]" { "any" } else { &t.allowed_ips }),
+            exp = escape(t.expires_at.as_deref().unwrap_or("never")),
+            used = escape(t.last_used_at.as_deref().unwrap_or("—")),
+            state = state,
+            revoke = revoke,
+        ));
+    }
+    rows.push_str("</table>");
+
+    let create = if can_create {
+        format!(
+            "<div class=\"card\"><h2>Create token</h2>\
+             <form method=\"post\" action=\"/gui/vaults/{vid}/tokens\">\
+             <label>Name</label><input name=\"display_name\" placeholder=\"ci-deployer\">\
+             <label>Allowed paths (one per line, * for all)</label>\
+             <textarea name=\"allowed_paths\" rows=\"3\" style=\"width:100%;font-family:ui-monospace,monospace;\
+             padding:10px;border:1px solid #30363d;border-radius:7px;background:#0e1116;color:#e6edf3\">*</textarea>\
+             <label>Allowed IPs / CIDRs (one per line, blank = any)</label>\
+             <textarea name=\"allowed_ips\" rows=\"2\" style=\"width:100%;font-family:ui-monospace,monospace;\
+             padding:10px;border:1px solid #30363d;border-radius:7px;background:#0e1116;color:#e6edf3\"></textarea>\
+             <label>TTL (hours, blank = never expires)</label><input name=\"ttl_hours\" type=\"number\" min=\"1\">\
+             <button type=\"submit\">Create token</button></form></div>",
+            vid = escape(vault_id)
+        )
+    } else {
+        String::new()
+    };
+
+    let body = format!(
+        "<p><a href=\"/gui/vaults/{vid}\">&larr; {name}</a></p>{err}\
+         <div class=\"card\"><h1>API tokens</h1>{rows}</div>{create}",
+        vid = escape(vault_id),
+        name = escape(vault_name),
+        err = err,
+        rows = rows,
+        create = create,
+    );
+    layout("API tokens", Some(username), &body)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// token_created_page
+// One-time display of a freshly minted token's secret value.
+// ─────────────────────────────────────────────────────────────────────────────
+pub fn token_created_page(username: &str, vault_id: &str, vault_name: &str, raw_token: &str) -> String {
+    let body = format!(
+        "<div class=\"card\"><h1>Token created</h1>\
+         <div class=\"err\">Copy this token now — it will not be shown again.</div>\
+         <pre style=\"background:#0e1116;border:1px solid #30363d;border-radius:8px;padding:14px;\
+         overflow:auto;color:#3fb950;font-size:15px\">{token}</pre>\
+         <p class=\"muted\">Use it as <code>X-Vault-Token</code> against \
+         <code>/v1/secret/data/&lt;path&gt;</code>.</p>\
+         <a href=\"/gui/vaults/{vid}/tokens\"><button type=\"button\">Done</button></a></div>",
+        token = escape(raw_token),
+        vid = escape(vault_id),
+    );
+    let _ = vault_name;
+    layout("Token created", Some(username), &body)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

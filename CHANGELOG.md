@@ -5,6 +5,27 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — Increment 3 (part 1): API tokens + Vault-compatible KV API
+- **Per-vault API tokens** (`tokens.rs`):
+  - `create_token` (crypto Flow 7) — `ev.<base64url>`; the vault key is sealed
+    under a per-token `token_key`, which is sealed under the master key. Only
+    `SHA-256(token)` is stored; the raw token is shown once. Created by editor+.
+  - `authenticate_token` (crypto Flow 8) — unwraps master_key → token_key →
+    vault_key; rejects revoked/expired; bumps `last_used_at`.
+  - `path_allowed` — `*` / trailing-`*` glob / exact path matching.
+  - `list_for_vault`, `revoke_token` (effective immediately).
+- **KV v2 REST API** (`api/routes/kv.rs`), token-authenticated via
+  `X-Vault-Token` (the token selects the vault):
+  - `GET/POST/DELETE /v1/secret/data/{*path}` — read / write-new-version /
+    soft-delete, in Vault's response envelope.
+  - `GET /v1/secret/metadata[/{*path}]?list=true` — directory listing (incl. root).
+- **Token GUI** — per-vault `/gui/vaults/:id/tokens` (list + create + revoke,
+  editor+), with one-time raw-token display.
+- Requires an unsealed instance (master_key reachable) for all token operations.
+- Verified end-to-end: a REST client reads/writes a secret with a token; path
+  ACL, missing/bad token, expiry, and revocation all enforced (403); 11 crypto
+  tests pass. **Still pending for Increment 3: IP/subnet ACL + HMAC audit log.**
+
 ### Changed — Increment 2c (roles + master-key escrow)
 - **Per-vault roles** — `vault_user_keys` gains a `role` column
   (`viewer` < `editor` < `admin`). Capabilities: viewer reads; editor reads +

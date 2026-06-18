@@ -21,7 +21,7 @@ use crate::auth::session::{self, SessionIdentity, SessionKeys};
 use crate::error::AppError;
 use crate::state::AppState;
 use crate::vault::Role;
-use crate::{secrets, users, vault};
+use crate::{secrets, tokens, users, vault};
 
 pub mod pages;
 
@@ -91,6 +91,8 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/gui/vaults/{id}/secret", get(secret_view).post(secret_write))
         .route("/gui/vaults/{id}/secret/new", get(secret_new_form))
         .route("/gui/vaults/{id}/secret/delete", post(secret_delete))
+        .route("/gui/vaults/{id}/tokens", get(tokens_list).post(tokens_create))
+        .route("/gui/vaults/{id}/tokens/{tid}/revoke", post(tokens_revoke))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -240,6 +242,19 @@ pub struct SecretForm {
 pub struct PathParam {
     #[serde(default)]
     pub path: String,
+}
+
+/// Token create form fields.
+#[derive(Debug, Deserialize)]
+pub struct TokenForm {
+    #[serde(default)]
+    pub display_name: String,
+    #[serde(default)]
+    pub allowed_paths: String,
+    #[serde(default)]
+    pub allowed_ips: String,
+    #[serde(default)]
+    pub ttl_hours: String,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -531,6 +546,94 @@ async fn secret_delete(
     }
     secrets::soft_delete(&state.db, &vault_id, &form.path).await?;
     Ok(Redirect::to(&format!("/gui/vaults/{vault_id}")).into_response())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /gui/vaults/{id}/tokens
+// List the vault's API tokens; editor+ may also create them.
+// ─────────────────────────────────────────────────────────────────────────────
+async fn tokens_list(
+    State(state): State<Arc<AppState>>,
+    Path(vault_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    let keys = guard!(auth state headers);
+    guard!(unsealed state, &keys);
+    let Some(v) = vault::get(&state.db, &vault_id).await? else { return Ok(not_found(&keys)); };
+    let access = load_access(&state, &keys, &vault_id).await?;
+    if !access.can_write() {
+        return Ok(access_denied(&keys));
+    }
+    let list = tokens::list_for_vault(&state.db, &vault_id).await?;
+    Ok(Html(pages::tokens_page(&keys.username, &vault_id, &v.name, &list, true, None)).into_response())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /gui/vaults/{id}/tokens
+// Mint a per-vault API token (crypto Flow 7); shows the raw token once.
+// ─────────────────────────────────────────────────────────────────────────────
+async fn tokens_create(
+    State(state): State<Arc<AppState>>,
+    Path(vault_id): Path<String>,
+    headers: HeaderMap,
+    Form(form): Form<TokenForm>,
+) -> Result<Response, AppError> {
+    let keys = guard!(auth state headers);
+    guard!(unsealed state, &keys);
+    let Some(v) = vault::get(&state.db, &vault_id).await? else { return Ok(not_found(&keys)); };
+    if !load_access(&state, &keys, &vault_id).await?.can_write() {
+        return Ok(access_denied(&keys));
+    }
+
+    let paths = lines_to_vec(&form.allowed_paths);
+    let ips = lines_to_vec(&form.allowed_ips);
+    let ttl_seconds = match form.ttl_hours.trim() {
+        "" => None,
+        h => match h.parse::<i64>() {
+            Ok(n) if n > 0 => Some(n * 3600),
+            _ => {
+                let list = tokens::list_for_vault(&state.db, &vault_id).await?;
+                return Ok((StatusCode::BAD_REQUEST, Html(pages::tokens_page(&keys.username, &vault_id, &v.name, &list, true, Some("TTL must be a positive number of hours.")))).into_response());
+            }
+        },
+    };
+
+    let mk = master_key(&state).await?;
+    match tokens::create_token(&state.db, &vault_id, &keys.user_id, &keys.private_key, &mk, &form.display_name, &paths, &ips, ttl_seconds).await {
+        Ok(raw) => Ok(Html(pages::token_created_page(&keys.username, &vault_id, &v.name, &raw)).into_response()),
+        Err(AppError::Forbidden) => Ok(access_denied(&keys)),
+        Err(AppError::BadRequest(msg)) => {
+            let list = tokens::list_for_vault(&state.db, &vault_id).await?;
+            Ok((StatusCode::BAD_REQUEST, Html(pages::tokens_page(&keys.username, &vault_id, &v.name, &list, true, Some(&msg)))).into_response())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /gui/vaults/{id}/tokens/{tid}/revoke
+// Revoke a token (effective immediately).
+// ─────────────────────────────────────────────────────────────────────────────
+async fn tokens_revoke(
+    State(state): State<Arc<AppState>>,
+    Path((vault_id, token_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    let keys = guard!(auth state headers);
+    guard!(unsealed state, &keys);
+    if !load_access(&state, &keys, &vault_id).await?.can_write() {
+        return Ok(access_denied(&keys));
+    }
+    tokens::revoke_token(&state.db, &vault_id, &token_id).await?;
+    Ok(Redirect::to(&format!("/gui/vaults/{vault_id}/tokens")).into_response())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// lines_to_vec
+// Split a textarea into trimmed, non-empty lines.
+// ─────────────────────────────────────────────────────────────────────────────
+fn lines_to_vec(input: &str) -> Vec<String> {
+    input.lines().map(str::trim).filter(|s| !s.is_empty()).map(String::from).collect()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

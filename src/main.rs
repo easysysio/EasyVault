@@ -14,6 +14,7 @@ mod error;
 mod secrets;
 mod state;
 mod storage;
+mod tokens;
 mod users;
 mod vault;
 mod web;
