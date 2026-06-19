@@ -1,8 +1,8 @@
 // =============================================================================
 // storage/mod.rs — storage backend wiring
 //
-// Only SQLite is implemented in this increment; PostgreSQL is reserved for a
-// later one. Re-exports the pool constructor used at startup.
+// SQLite is the supported backend. Re-exports the pool constructor used at
+// startup.
 // =============================================================================
 
 pub mod sqlite;

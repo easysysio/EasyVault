@@ -35,14 +35,13 @@ pub struct ServerConfig {
     pub tls_key: String,
 }
 
-/// Backing store selection. Only sqlite is wired up in this increment.
+/// Backing store selection. SQLite is the only supported backend.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct StorageConfig {
     #[serde(rename = "type")]
     pub kind: String,
     pub path: String,
-    pub url: String,
 }
 
 /// GUI session / brute-force / proxy-trust knobs.
@@ -89,7 +88,6 @@ impl Default for StorageConfig {
         Self {
             kind: "sqlite".into(),
             path: "easyvault.db".into(),
-            url: String::new(),
         }
     }
 }
