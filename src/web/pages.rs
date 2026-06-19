@@ -25,42 +25,73 @@ pub fn escape(input: &str) -> String {
     out
 }
 
-/// Shared CSS for every page.
+/// Shared CSS for every page. Colors come from CSS variables so the dark/light
+/// theme is a single attribute flip on <html data-theme>.
 const STYLE: &str = "\
-:root{color-scheme:dark}\
+:root{\
+--bg:#0e1116;--card:#161b22;--border:#30363d;--border-soft:#21262d;\
+--fg:#e6edf3;--muted:#7d8590;--h2:#9da7b3;--link:#58a6ff;--brand:#3fb950;\
+--accent:#238636;--accent-hover:#2ea043;--accent-fg:#fff;\
+--neutral:#30363d;--neutral-fg:#e6edf3;--danger:#b62324;--danger-fg:#fff;\
+--err-bg:#3d1a1d;--err-border:#f85149;--err-fg:#ffa198;\
+--ok-bg:#132e1a;--ok-fg:#3fb950;--ok-border:#238636;\
+--warn-bg:#3d2a12;--warn-fg:#d29922;--warn-border:#9e6a03;color-scheme:dark}\
+[data-theme=light]{\
+--bg:#f6f8fa;--card:#ffffff;--border:#d0d7de;--border-soft:#eaeef2;\
+--fg:#1f2328;--muted:#59636e;--h2:#59636e;--link:#0969da;--brand:#1a7f37;\
+--accent:#1f883d;--accent-hover:#1a7f37;--accent-fg:#fff;\
+--neutral:#eaeef2;--neutral-fg:#1f2328;--danger:#cf222e;--danger-fg:#fff;\
+--err-bg:#ffebe9;--err-border:#cf222e;--err-fg:#82071e;\
+--ok-bg:#dafbe1;--ok-fg:#1a7f37;--ok-border:#1f883d;\
+--warn-bg:#fff8c5;--warn-fg:#9a6700;--warn-border:#d4a72c;color-scheme:light}\
 *{box-sizing:border-box}\
-body{margin:0;font:15px/1.5 system-ui,sans-serif;background:#0e1116;color:#e6edf3}\
+body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg)}\
 header{display:flex;align-items:center;justify-content:space-between;\
-padding:14px 22px;background:#161b22;border-bottom:1px solid #30363d}\
+padding:14px 22px;background:var(--card);border-bottom:1px solid var(--border)}\
 header .brand{font-weight:700;letter-spacing:.3px}\
-header .brand span{color:#3fb950}\
+header .brand span{color:var(--brand)}\
+header .right{display:flex;align-items:center;gap:14px}\
 main{max-width:880px;margin:40px auto;padding:0 22px}\
-.card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:24px;margin-bottom:20px}\
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:24px;margin-bottom:20px}\
 h1{font-size:22px;margin:0 0 6px}\
-h2{font-size:16px;margin:0 0 14px;color:#9da7b3}\
-label{display:block;margin:14px 0 6px;font-size:13px;color:#9da7b3}\
-input{width:100%;padding:10px 12px;border:1px solid #30363d;border-radius:7px;\
-background:#0e1116;color:#e6edf3;font-size:14px}\
-button{margin-top:18px;padding:10px 18px;border:0;border-radius:7px;\
-background:#238636;color:#fff;font-weight:600;cursor:pointer;font-size:14px}\
-button:hover{background:#2ea043}\
-button.link{background:none;color:#58a6ff;padding:0;margin:0;font-weight:400}\
-a{color:#58a6ff;text-decoration:none}a:hover{text-decoration:underline}\
-.err{background:#3d1a1d;border:1px solid #f85149;color:#ffa198;padding:10px 12px;\
-border-radius:7px;margin-bottom:8px;font-size:14px}\
-.muted{color:#7d8590;font-size:13px}\
-.pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600}\
-.pill.ok{background:#132e1a;color:#3fb950;border:1px solid #238636}\
-.pill.warn{background:#3d2a12;color:#d29922;border:1px solid #9e6a03}\
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}\
-.kv{padding:12px 14px;background:#0e1116;border:1px solid #30363d;border-radius:8px}\
-.kv .k{font-size:12px;color:#7d8590}.kv .v{font-size:15px;margin-top:2px}\
-table{width:100%;border-collapse:collapse;margin-top:10px}\
-th{text-align:left;font-size:12px;color:#7d8590;font-weight:600;padding:8px 10px;border-bottom:1px solid #30363d}\
-td{padding:9px 10px;border-bottom:1px solid #21262d;font-size:14px;vertical-align:middle}\
-tr:last-child td{border-bottom:0}\
+h2{font-size:16px;margin:0 0 14px;color:var(--h2)}\
+label{display:block;margin:14px 0 6px;font-size:13px;color:var(--h2)}\
+input,textarea,select{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:7px;\
+background:var(--bg);color:var(--fg);font-size:14px}\
 textarea{font-family:ui-monospace,monospace}\
-code{background:#0e1116;border:1px solid #30363d;border-radius:4px;padding:1px 5px;font-size:13px}";
+button{margin-top:18px;padding:10px 18px;border:0;border-radius:7px;\
+background:var(--accent);color:var(--accent-fg);font-weight:600;cursor:pointer;font-size:14px}\
+button:hover{filter:brightness(1.08)}\
+button.btn-neutral{background:var(--neutral);color:var(--neutral-fg)}\
+button.btn-danger{background:var(--danger);color:var(--danger-fg)}\
+button.link{background:none;color:var(--link);padding:0;margin:0;font-weight:400}\
+a{color:var(--link);text-decoration:none}a:hover{text-decoration:underline}\
+.err{background:var(--err-bg);border:1px solid var(--err-border);color:var(--err-fg);padding:10px 12px;\
+border-radius:7px;margin-bottom:8px;font-size:14px}\
+.muted{color:var(--muted);font-size:13px}\
+.pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600}\
+.pill.ok{background:var(--ok-bg);color:var(--ok-fg);border:1px solid var(--ok-border)}\
+.pill.warn{background:var(--warn-bg);color:var(--warn-fg);border:1px solid var(--warn-border)}\
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}\
+.kv{padding:12px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px}\
+.kv .k{font-size:12px;color:var(--muted)}.kv .v{font-size:15px;margin-top:2px}\
+table{width:100%;border-collapse:collapse;margin-top:10px}\
+th{text-align:left;font-size:12px;color:var(--muted);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--border)}\
+td{padding:9px 10px;border-bottom:1px solid var(--border-soft);font-size:14px;vertical-align:middle}\
+tr:last-child td{border-bottom:0}\
+pre{background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--fg)}\
+code{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-size:13px}\
+.themetoggle{font-size:16px;line-height:1;cursor:pointer}";
+
+/// Inline head script: apply the saved/OS theme before paint (no flash) and a
+/// toggle handler. Kept tiny and dependency-free.
+const THEME_SCRIPT: &str = "\
+(function(){try{var t=localStorage.getItem('ev-theme');\
+if(!t){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';}\
+document.documentElement.setAttribute('data-theme',t);}catch(e){}})();\
+function evToggleTheme(){var d=document.documentElement;\
+var c=d.getAttribute('data-theme')==='light'?'dark':'light';\
+d.setAttribute('data-theme',c);try{localStorage.setItem('ev-theme',c);}catch(e){}}";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // layout
@@ -79,13 +110,17 @@ pub fn layout(title: &str, user: Option<&str>, body: &str) -> String {
     format!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
          <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
-         <title>{} · EasyVault</title><style>{}</style></head><body>\
-         <header><div class=\"brand\">Easy<span>Vault</span></div><div>{}</div></header>\
-         <main>{}</main></body></html>",
-        escape(title),
-        STYLE,
-        header_right,
-        body
+         <title>{title} · EasyVault</title><script>{script}</script><style>{style}</style></head><body>\
+         <header><div class=\"brand\">Easy<span>Vault</span></div>\
+         <div class=\"right\">\
+         <button class=\"link themetoggle\" type=\"button\" onclick=\"evToggleTheme()\" \
+         title=\"Toggle light / dark\" aria-label=\"Toggle theme\">◐</button>{right}</div></header>\
+         <main>{body}</main></body></html>",
+        title = escape(title),
+        script = THEME_SCRIPT,
+        style = STYLE,
+        right = header_right,
+        body = body
     )
 }
 
@@ -220,7 +255,7 @@ pub fn dashboard_page(username: &str, is_master: bool, sealed: bool, vaults: &[V
     let seal_button = if is_master && !sealed {
         "<form method=\"post\" action=\"/gui/seal\" style=\"margin-top:10px\" \
          onsubmit=\"return confirm('Seal the instance? All secret access stops until it is unsealed again.');\">\
-         <button type=\"submit\" style=\"background:#6e2330\">Seal instance</button>\
+         <button type=\"submit\" class=\"btn-danger\">Seal instance</button>\
          <span class=\"muted\"> — drops the master key from memory.</span></form>"
     } else {
         ""
@@ -356,7 +391,7 @@ pub fn vault_detail_page(d: VaultDetail<'_>) -> String {
         };
         let add = if d.can_write {
             format!(
-                "<a href=\"/gui/vaults/{vid}/tokens\"><button type=\"button\" style=\"background:#30363d\">Tokens</button></a> \
+                "<a href=\"/gui/vaults/{vid}/tokens\"><button type=\"button\" class=\"btn-neutral\">Tokens</button></a> \
                  <a href=\"/gui/vaults/{vid}/secret/new\"><button type=\"button\">Add secret</button></a>",
                 vid = escape(d.vault_id)
             )
@@ -407,8 +442,8 @@ pub fn vault_detail_page(d: VaultDetail<'_>) -> String {
              <div style=\"flex:1\"><label style=\"margin-top:0\">Assign username</label>\
              <input name=\"username\" required></div>\
              <div><label style=\"margin-top:0\">Role</label>\
-             <select name=\"role\" style=\"padding:10px 12px;border:1px solid #30363d;border-radius:7px;\
-             background:#0e1116;color:#e6edf3\">\
+             <select name=\"role\" style=\"padding:10px 12px;border:1px solid var(--border);border-radius:7px;\
+             background:var(--bg);color:var(--fg)\">\
              <option value=\"viewer\">viewer</option>\
              <option value=\"editor\">editor</option>\
              <option value=\"admin\">admin</option></select></div>\
@@ -434,7 +469,7 @@ pub fn vault_detail_page(d: VaultDetail<'_>) -> String {
              Blank = no restriction.</p>\
              <form method=\"post\" action=\"/gui/vaults/{vid}/acl\">\
              <textarea name=\"entries\" rows=\"3\" style=\"width:100%;font-family:ui-monospace,monospace;\
-             padding:10px;border:1px solid #30363d;border-radius:7px;background:#0e1116;color:#e6edf3\" \
+             padding:10px;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--fg)\" \
              placeholder=\"10.0.0.0/8&#10;1.2.3.4\">{current}</textarea>\
              <button type=\"submit\">Save ACL</button></form></div>",
             vid = escape(d.vault_id),
@@ -448,7 +483,7 @@ pub fn vault_detail_page(d: VaultDetail<'_>) -> String {
     let rotate = if d.can_assign {
         format!(
             "<form method=\"post\" action=\"/gui/vaults/{vid}/rotate\" style=\"margin-top:14px\">\
-             <button type=\"submit\" style=\"background:#30363d\">Rotate vault key</button>\
+             <button type=\"submit\" class=\"btn-neutral\">Rotate vault key</button>\
              <span class=\"muted\"> — re-encrypts all secrets and re-wraps keys.</span></form>",
             vid = escape(d.vault_id)
         )
@@ -585,10 +620,10 @@ pub fn tokens_page(
              <label>Name</label><input name=\"display_name\" placeholder=\"ci-deployer\">\
              <label>Allowed paths (one per line, * for all)</label>\
              <textarea name=\"allowed_paths\" rows=\"3\" style=\"width:100%;font-family:ui-monospace,monospace;\
-             padding:10px;border:1px solid #30363d;border-radius:7px;background:#0e1116;color:#e6edf3\">*</textarea>\
+             padding:10px;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--fg)\">*</textarea>\
              <label>Allowed IPs / CIDRs (one per line, blank = any)</label>\
              <textarea name=\"allowed_ips\" rows=\"2\" style=\"width:100%;font-family:ui-monospace,monospace;\
-             padding:10px;border:1px solid #30363d;border-radius:7px;background:#0e1116;color:#e6edf3\"></textarea>\
+             padding:10px;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--fg)\"></textarea>\
              <label>TTL (hours, blank = never expires)</label><input name=\"ttl_hours\" type=\"number\" min=\"1\">\
              <button type=\"submit\">Create token</button></form></div>",
             vid = escape(vault_id)
@@ -617,8 +652,8 @@ pub fn token_created_page(username: &str, vault_id: &str, vault_name: &str, raw_
     let body = format!(
         "<div class=\"card\"><h1>Token created</h1>\
          <div class=\"err\">Copy this token now — it will not be shown again.</div>\
-         <pre style=\"background:#0e1116;border:1px solid #30363d;border-radius:8px;padding:14px;\
-         overflow:auto;color:#3fb950;font-size:15px\">{token}</pre>\
+         <pre style=\"background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;\
+         overflow:auto;color:var(--brand);font-size:15px\">{token}</pre>\
          <p class=\"muted\">Use it as <code>X-Vault-Token</code> against \
          <code>/v1/secret/data/&lt;path&gt;</code>.</p>\
          <a href=\"/gui/vaults/{vid}/tokens\"><button type=\"button\">Done</button></a></div>",
@@ -642,7 +677,7 @@ pub fn secret_new_page(username: &str, vault_id: &str, vault_name: &str, error: 
          <label>Path</label><input name=\"path\" placeholder=\"db/postgres/password\" value=\"{path}\" required>\
          <label>Data (JSON object)</label>\
          <textarea name=\"data\" rows=\"6\" style=\"width:100%;font-family:ui-monospace,monospace;\
-         padding:10px;border:1px solid #30363d;border-radius:7px;background:#0e1116;color:#e6edf3\" \
+         padding:10px;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--fg)\" \
          placeholder='{{\"password\": \"s3cr3t\"}}' required>{data}</textarea>\
          <button type=\"submit\">Save secret</button></form></div>",
         vid = escape(vault_id),
@@ -681,13 +716,13 @@ pub fn secret_view_page(
     let body = format!(
         "<p><a href=\"/gui/vaults/{vid}\">&larr; {name}</a></p>\
          <div class=\"card\"><h1>{path}</h1><h2>Current value (v{ver})</h2>\
-         <pre style=\"background:#0e1116;border:1px solid #30363d;border-radius:8px;padding:14px;\
-         overflow:auto;color:#e6edf3\">{json}</pre>\
+         <pre style=\"background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;\
+         overflow:auto;color:var(--fg)\">{json}</pre>\
          <div style=\"display:flex;gap:10px\">\
          <a href=\"/gui/vaults/{vid}/secret/new?path={pathenc}\"><button type=\"button\">New version</button></a>\
          <form method=\"post\" action=\"/gui/vaults/{vid}/secret/delete\" style=\"margin:0\">\
          <input type=\"hidden\" name=\"path\" value=\"{path}\">\
-         <button type=\"submit\" style=\"background:#6e2330\">Delete</button></form></div></div>\
+         <button type=\"submit\" class=\"btn-danger\">Delete</button></form></div></div>\
          <div class=\"card\"><h2>Versions</h2>{vrows}</div>",
         vid = escape(vault_id),
         name = escape(vault_name),

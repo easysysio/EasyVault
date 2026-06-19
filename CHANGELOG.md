@@ -5,6 +5,13 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — dark / light theme
+- The GUI palette is now driven by CSS variables with a **light theme** in
+  addition to the existing dark one. A **◐ toggle** in the header switches and
+  persists the choice in `localStorage`; the default follows the OS
+  `prefers-color-scheme`. A tiny inline head script applies the theme before
+  first paint (no flash). No dependencies.
+
 ### Added — full audit coverage + emergency seal
 - **GUI actions are now audited** too (not just the token API): secret `READ`
   (incl. 404), `WRITE`, `DELETE`, plus `LOGIN`, `GRANT`, `REVOKE`, `ROTATE` and
