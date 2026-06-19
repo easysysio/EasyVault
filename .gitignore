@@ -3,6 +3,9 @@
 debug
 target
 
+# Local design briefing (kept out of the repo)
+/CLAUDE.md
+
 # Runtime data (local instance state — never commit secrets/db)
 /easyvault.db
 /easyvault.db-shm
