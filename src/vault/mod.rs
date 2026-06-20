@@ -333,58 +333,6 @@ pub async fn assign(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// get_acl
-// Read a vault's network ACL as a combined list of IP/CIDR entries.
-// ─────────────────────────────────────────────────────────────────────────────
-pub async fn get_acl(db: &sqlx::SqlitePool, vault_id: &str) -> Result<Vec<String>, AppError> {
-    let row = sqlx::query_as::<_, (String, String)>(
-        "SELECT acl_ips, acl_subnets FROM vaults WHERE id = ?",
-    )
-    .bind(vault_id)
-    .fetch_optional(db)
-    .await?
-    .unwrap_or_else(|| ("[]".into(), "[]".into()));
-    let mut entries: Vec<String> = serde_json::from_str(&row.0).unwrap_or_default();
-    let subnets: Vec<String> = serde_json::from_str(&row.1).unwrap_or_default();
-    entries.extend(subnets);
-    Ok(entries)
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// set_acl
-// Replace a vault's network ACL from a flat list of IP/CIDR entries, splitting
-// bare IPs into acl_ips and CIDRs into acl_subnets.
-// ─────────────────────────────────────────────────────────────────────────────
-pub async fn set_acl(db: &sqlx::SqlitePool, vault_id: &str, entries: &[String]) -> Result<(), AppError> {
-    let mut ips = Vec::new();
-    let mut subnets = Vec::new();
-    for e in entries {
-        let e = e.trim();
-        if e.is_empty() {
-            continue;
-        }
-        if e.contains('/') {
-            if e.parse::<ipnet::IpNet>().is_err() {
-                return Err(AppError::BadRequest(format!("invalid CIDR: {e}")));
-            }
-            subnets.push(e.to_string());
-        } else {
-            if e.parse::<std::net::IpAddr>().is_err() {
-                return Err(AppError::BadRequest(format!("invalid IP: {e}")));
-            }
-            ips.push(e.to_string());
-        }
-    }
-    sqlx::query("UPDATE vaults SET acl_ips = ?, acl_subnets = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-        .bind(serde_json::to_string(&ips).unwrap_or_else(|_| "[]".into()))
-        .bind(serde_json::to_string(&subnets).unwrap_or_else(|_| "[]".into()))
-        .bind(vault_id)
-        .execute(db)
-        .await?;
-    Ok(())
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // revoke — crypto Flow 9 (Revoke + Key Rotation)
 // Remove the user's wrapped key, then rotate the vault key so any secret
 // material the revoked user already saw can no longer decrypt future reads.

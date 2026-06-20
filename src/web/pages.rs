@@ -404,14 +404,13 @@ pub struct VaultDetail<'a> {
     pub error: Option<&'a str>,
 }
 
-/// Inputs for `vault_settings_page` (management: members, ACL, key rotation).
+/// Inputs for `vault_settings_page` (management: members + key rotation).
 pub struct VaultSettings<'a> {
     pub username: &'a str,
     pub vault_id: &'a str,
     pub vault_name: &'a str,
     pub members: &'a [crate::vault::VaultMember],
     pub current_user_id: &'a str,
-    pub acl_entries: &'a [String],
     pub error: Option<&'a str>,
 }
 
@@ -539,18 +538,10 @@ pub fn vault_settings_page(s: VaultSettings<'_>) -> String {
         vid = escape(s.vault_id)
     );
 
-    let acl_current = s.acl_entries.join("\n");
     let body = format!(
         "<p><a href=\"/gui/vaults/{vid}\">&larr; {name}</a></p>{err}\
          <div class=\"card\"><h1>{name} — settings</h1></div>\
          <div class=\"card\"><h2>Access</h2>{member_rows}{assign_form}</div>\
-         <div class=\"card\"><h2>Network ACL</h2>\
-         <p class=\"muted\">Restrict which client IPs/subnets may use this vault's tokens. Blank = no restriction.</p>\
-         <form method=\"post\" action=\"/gui/vaults/{vid}/acl\">\
-         <textarea name=\"entries\" rows=\"3\" style=\"width:100%;font-family:ui-monospace,monospace;\
-         padding:10px;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--fg)\" \
-         placeholder=\"10.0.0.0/8&#10;1.2.3.4\">{acl}</textarea>\
-         <button type=\"submit\">Save ACL</button></form></div>\
          <div class=\"card\"><h2>Key rotation</h2>\
          <p class=\"muted\">Generate a new vault key, re-encrypt every secret, and re-wrap the key for \
          all members and live tokens.</p>\
@@ -561,7 +552,6 @@ pub fn vault_settings_page(s: VaultSettings<'_>) -> String {
         err = err,
         member_rows = member_rows,
         assign_form = assign_form,
-        acl = escape(&acl_current),
     );
     layout(s.vault_name, Some(s.username), &body)
 }

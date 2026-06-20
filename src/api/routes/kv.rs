@@ -28,8 +28,8 @@ use crate::audit::{self, AuditEntry};
 use crate::error::AppError;
 use crate::state::AppState;
 use crate::tokens::{self, TokenAuth};
+use crate::secrets;
 use crate::vault::acl;
-use crate::{secrets, vault};
 
 /// Query flags for the metadata endpoint (`?list=true`).
 #[derive(Debug, Default, Deserialize)]
@@ -89,10 +89,9 @@ async fn begin(
         }
     };
 
-    let vault_acl = vault::get_acl(&state.db, &auth.vault_id).await.unwrap_or_default();
+    // Path + per-token IP/CIDR ACL ("where this token may be used from").
     let allowed = tokens::path_allowed(&auth.allowed_paths, path)
-        && acl::ip_allowed(ip, &auth.allowed_ips)
-        && acl::ip_allowed(ip, &vault_acl);
+        && acl::ip_allowed(ip, &auth.allowed_ips);
     if !allowed {
         record_deny(state, &master, operation, Some(&auth.vault_id), path, Some(&auth.token_id), &ip_str).await;
         return Err(AppError::Forbidden.into_response());

@@ -5,6 +5,13 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed — network ACL is per-token, not per-vault
+- Removed the vault-level network ACL. IP/CIDR restrictions now live **on each
+  token and AppRole** (their `allowed_ips`) — you say where a credential may be
+  used from when you issue it. KV requests are checked against the token's IPs
+  only; the vault Settings page no longer has a Network ACL card and
+  `POST /gui/vaults/:id/acl` is gone.
+
 ### Changed — vault Settings page
 - Vault management (member access/assign/revoke, network ACL, key rotation) moved
   off the main vault page onto a dedicated **Settings** page
