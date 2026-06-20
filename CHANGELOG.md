@@ -3,7 +3,10 @@
 All notable changes to EasyVault are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.1.3] — 2026-06-20
+
+### Added — UI
+- A subtle **version label** in the lower-right corner of every page.
 
 ### Added — user lifecycle
 - **Disable / enable users** (master only, on `/gui/users`) — a disabled user
@@ -235,6 +238,7 @@ HMAC audit log, vault-key rotation, TLS, and a fully browser-based bootstrap.
   secret read/write → API-token REST access → IP ACL → audit + tamper detection
   → key rotation, over both HTTP and TLS.
 
+[0.1.3]: https://github.com/yarivha/EasyVault/releases/tag/v0.1.3
 [0.1.2]: https://github.com/yarivha/EasyVault/releases/tag/v0.1.2
 [0.1.1]: https://github.com/yarivha/EasyVault/releases/tag/v0.1.1
 [0.1.0]: https://github.com/yarivha/EasyVault/releases/tag/v0.1.0
