@@ -64,7 +64,46 @@ pub async fn create_token(
 ) -> Result<String, AppError> {
     // Proves the creator actually has access to this vault.
     let vault_key = vault::resolve_vault_key(db, vault_id, creator_id, creator_private).await?;
+    mint(db, vault_id, &vault_key, master_key, display_name, allowed_paths, allowed_ips, ttl_seconds, Some(creator_id)).await
+}
 
+// ─────────────────────────────────────────────────────────────────────────────
+// create_token_via_master
+// Like create_token but resolves the vault key from the master escrow (no user
+// session) — used by AppRole login, where no human is present.
+// ─────────────────────────────────────────────────────────────────────────────
+#[allow(clippy::too_many_arguments)]
+pub async fn create_token_via_master(
+    db: &sqlx::SqlitePool,
+    vault_id: &str,
+    master_key: &[u8; 32],
+    display_name: &str,
+    allowed_paths: &[String],
+    allowed_ips: &[String],
+    ttl_seconds: Option<i64>,
+    created_by: Option<&str>,
+) -> Result<String, AppError> {
+    let vault_key = vault::resolve_vault_key_via_master(db, vault_id, master_key).await?;
+    mint(db, vault_id, &vault_key, master_key, display_name, allowed_paths, allowed_ips, ttl_seconds, created_by).await
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// mint
+// Seal the vault key under a fresh token_key (and the token_key under the master
+// key), then store the token. Returns the raw token (shown once).
+// ─────────────────────────────────────────────────────────────────────────────
+#[allow(clippy::too_many_arguments)]
+async fn mint(
+    db: &sqlx::SqlitePool,
+    vault_id: &str,
+    vault_key: &[u8; 32],
+    master_key: &[u8; 32],
+    display_name: &str,
+    allowed_paths: &[String],
+    allowed_ips: &[String],
+    ttl_seconds: Option<i64>,
+    created_by: Option<&str>,
+) -> Result<String, AppError> {
     let token_key = Zeroizing::new(crypto::random_key());
     let raw = format!("{TOKEN_PREFIX}{}", B64URL.encode(crypto::random_bytes::<32>()));
     let token_hash = crypto::sha256_hex(raw.as_bytes());
@@ -101,7 +140,7 @@ pub async fn create_token(
     .bind(expires_at)
     .bind(renewable)
     .bind(ttl_seconds)
-    .bind(creator_id)
+    .bind(created_by)
     .execute(db)
     .await?;
 

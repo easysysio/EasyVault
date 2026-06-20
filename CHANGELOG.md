@@ -5,6 +5,18 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — AppRole auth (`/v1/auth/approle/login`)
+- **Machine login** — a service exchanges a `role_id` + `secret_id` for a
+  per-vault API token (Vault's `auth` envelope). The token is minted via the
+  master escrow (no human session), scoped to the role's vault + path/IP ACL +
+  TTL. Only `SHA-256(secret_id)` is stored (migration 004 adds `approles` +
+  `approle_secrets`).
+- **Role management in the GUI** (editor+, per vault, `/gui/vaults/:id/approles`)
+  — create roles (name, allowed paths/IPs, token TTL), issue secret-ids (shown
+  once, with a ready-to-run login `curl`), and delete roles.
+- Token minting refactored into a shared `mint` helper so both session-created
+  tokens and AppRole logins go through one path. New integration test (23 total).
+
 ### Added — Vault token self-management (`/v1/auth/token/*`)
 - **`GET/POST /v1/auth/token/lookup-self`** — metadata about the calling token
   (display name, policies/paths, ttl, renewable, expiry, vault) — what real

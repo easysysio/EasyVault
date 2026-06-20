@@ -24,7 +24,7 @@ use crate::auth::session::{self, SessionIdentity, SessionKeys};
 use crate::error::AppError;
 use crate::state::AppState;
 use crate::vault::{Role, acl};
-use crate::{audit, secrets, tokens, users, vault};
+use crate::{approle, audit, secrets, tokens, users, vault};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // audit_gui
@@ -139,6 +139,9 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/gui/vaults/{id}/secret/delete", post(secret_delete))
         .route("/gui/vaults/{id}/tokens", get(tokens_list).post(tokens_create))
         .route("/gui/vaults/{id}/tokens/{tid}/revoke", post(tokens_revoke))
+        .route("/gui/vaults/{id}/approles", get(approles_list).post(approles_create))
+        .route("/gui/vaults/{id}/approles/{rid}/secret-id", post(approle_secret_id))
+        .route("/gui/vaults/{id}/approles/{rid}/delete", post(approle_delete))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -942,6 +945,113 @@ async fn tokens_revoke(
     }
     tokens::revoke_token(&state.db, &vault_id, &token_id).await?;
     Ok(Redirect::to(&format!("/gui/vaults/{vault_id}/tokens")).into_response())
+}
+
+/// AppRole create form fields.
+#[derive(Debug, Deserialize)]
+pub struct ApproleForm {
+    pub name: String,
+    #[serde(default)]
+    pub allowed_paths: String,
+    #[serde(default)]
+    pub allowed_ips: String,
+    #[serde(default)]
+    pub ttl_hours: String,
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /gui/vaults/{id}/approles
+// List a vault's AppRoles; editor+ may also create them.
+// ─────────────────────────────────────────────────────────────────────────────
+async fn approles_list(
+    State(state): State<Arc<AppState>>,
+    Path(vault_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    let keys = guard!(auth state headers);
+    guard!(unsealed state, &keys);
+    let Some(v) = vault::get(&state.db, &vault_id).await? else { return Ok(not_found(&keys)); };
+    if !load_access(&state, &keys, &vault_id).await?.can_write() {
+        return Ok(access_denied(&keys));
+    }
+    let roles = approle::list_for_vault(&state.db, &vault_id).await?;
+    Ok(Html(pages::approles_page(&keys.username, &vault_id, &v.name, &roles, None)).into_response())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /gui/vaults/{id}/approles
+// Create an AppRole (editor+); shows the role_id in the list afterwards.
+// ─────────────────────────────────────────────────────────────────────────────
+async fn approles_create(
+    State(state): State<Arc<AppState>>,
+    Path(vault_id): Path<String>,
+    headers: HeaderMap,
+    Form(form): Form<ApproleForm>,
+) -> Result<Response, AppError> {
+    let keys = guard!(auth state headers);
+    guard!(unsealed state, &keys);
+    let Some(v) = vault::get(&state.db, &vault_id).await? else { return Ok(not_found(&keys)); };
+    if !load_access(&state, &keys, &vault_id).await?.can_write() {
+        return Ok(access_denied(&keys));
+    }
+    let paths = lines_to_vec(&form.allowed_paths);
+    let ips = lines_to_vec(&form.allowed_ips);
+    let ttl = match form.ttl_hours.trim() {
+        "" => None,
+        h => h.parse::<i64>().ok().filter(|n| *n > 0).map(|n| n * 3600),
+    };
+    match approle::create_role(&state.db, &vault_id, &form.name, &paths, &ips, ttl, &keys.user_id).await {
+        Ok(_) => Ok(Redirect::to(&format!("/gui/vaults/{vault_id}/approles")).into_response()),
+        Err(AppError::BadRequest(msg)) => {
+            let roles = approle::list_for_vault(&state.db, &vault_id).await?;
+            Ok((StatusCode::BAD_REQUEST, Html(pages::approles_page(&keys.username, &vault_id, &v.name, &roles, Some(&msg)))).into_response())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /gui/vaults/{id}/approles/{rid}/secret-id
+// Issue a new secret-id for a role; shows role_id + secret_id once.
+// ─────────────────────────────────────────────────────────────────────────────
+async fn approle_secret_id(
+    State(state): State<Arc<AppState>>,
+    Path((vault_id, rid)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    let keys = guard!(auth state headers);
+    guard!(unsealed state, &keys);
+    let Some(v) = vault::get(&state.db, &vault_id).await? else { return Ok(not_found(&keys)); };
+    if !load_access(&state, &keys, &vault_id).await?.can_write() {
+        return Ok(access_denied(&keys));
+    }
+    // Scope: the role must belong to this vault.
+    let role_id: Option<String> = sqlx::query_scalar("SELECT role_id FROM approles WHERE id = ? AND vault_id = ?")
+        .bind(&rid)
+        .bind(&vault_id)
+        .fetch_optional(&state.db)
+        .await?;
+    let Some(role_id) = role_id else { return Ok(not_found(&keys)); };
+    let secret_id = approle::generate_secret_id(&state.db, &rid).await?;
+    Ok(Html(pages::approle_secret_page(&keys.username, &vault_id, &v.name, &role_id, &secret_id)).into_response())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /gui/vaults/{id}/approles/{rid}/delete
+// Delete an AppRole (and its secret-ids).
+// ─────────────────────────────────────────────────────────────────────────────
+async fn approle_delete(
+    State(state): State<Arc<AppState>>,
+    Path((vault_id, rid)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    let keys = guard!(auth state headers);
+    guard!(unsealed state, &keys);
+    if !load_access(&state, &keys, &vault_id).await?.can_write() {
+        return Ok(access_denied(&keys));
+    }
+    approle::delete_role(&state.db, &vault_id, &rid).await?;
+    Ok(Redirect::to(&format!("/gui/vaults/{vault_id}/approles")).into_response())
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

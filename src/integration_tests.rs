@@ -9,6 +9,7 @@
 
 use serde_json::json;
 
+use crate::approle;
 use crate::audit::{self, AuditEntry};
 use crate::auth::session;
 use crate::crypto;
@@ -198,6 +199,44 @@ async fn rotation_preserves_access() {
     let auth = tokens::authenticate_token(&db, &master_key, &raw).await.unwrap();
     let (_, tv) = secrets::read_latest(&db, &vid, "k", &auth.vault_key).await.unwrap().unwrap();
     assert_eq!(tv["v"], "x");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AppRole: role + secret-id → login mints a scoped, working per-vault token
+// ─────────────────────────────────────────────────────────────────────────────
+#[tokio::test]
+async fn approle_login_mints_scoped_token() {
+    let db = test_pool().await;
+    let master_key = crypto::random_key();
+    let mid = users::create_user(&db, "m", "masterpass", true).await.unwrap();
+    users::create_user(&db, "ed", "edpassword", false).await.unwrap();
+    let vid = vault::create_vault(&db, "v", "", &mid, &master_key).await.unwrap();
+    vault::assign(&db, &vid, &master_key, "ed", Role::Editor, &mid).await.unwrap();
+    let ed_id = users::get_by_username(&db, "ed").await.unwrap().unwrap().id;
+    let ed_priv = private_key(&db, "ed", "edpassword").await;
+    let vkey = vault::resolve_vault_key(&db, &vid, &ed_id, &ed_priv).await.unwrap();
+    secrets::write(&db, &vid, "db/pg", &json!({"password": "hunter2"}), &vkey, &ed_id).await.unwrap();
+
+    let role_id = approle::create_role(&db, &vid, "ci", &["db/*".into()], &[], Some(3600), &ed_id).await.unwrap();
+    let internal = approle::get_by_role_id(&db, &role_id).await.unwrap().unwrap().id;
+    let secret_id = approle::generate_secret_id(&db, &internal).await.unwrap();
+
+    // Login mints a token scoped to the role's vault + paths + ttl.
+    let (token, policies, ttl) = approle::login(&db, &master_key, &role_id, &secret_id).await.unwrap();
+    assert_eq!(policies, vec!["db/*".to_string()]);
+    assert_eq!(ttl, Some(3600));
+
+    // The minted token authenticates and reads within its path ACL.
+    let auth = tokens::authenticate_token(&db, &master_key, &token).await.unwrap();
+    assert_eq!(auth.vault_id, vid);
+    assert!(tokens::path_allowed(&auth.allowed_paths, "db/pg"));
+    assert!(!tokens::path_allowed(&auth.allowed_paths, "other/key"));
+    let (_, value) = secrets::read_latest(&db, &vid, "db/pg", &auth.vault_key).await.unwrap().unwrap();
+    assert_eq!(value["password"], "hunter2");
+
+    // Wrong secret-id and wrong role-id both fail.
+    assert!(approle::login(&db, &master_key, &role_id, "wrong").await.is_err());
+    assert!(approle::login(&db, &master_key, "nope", &secret_id).await.is_err());
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

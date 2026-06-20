@@ -435,7 +435,8 @@ pub fn vault_detail_page(d: VaultDetail<'_>) -> String {
         };
         let add = if d.can_write {
             format!(
-                "<a href=\"/gui/vaults/{vid}/tokens\"><button type=\"button\" class=\"btn-neutral\">Tokens</button></a> \
+                "<a href=\"/gui/vaults/{vid}/approles\"><button type=\"button\" class=\"btn-neutral\">AppRoles</button></a> \
+                 <a href=\"/gui/vaults/{vid}/tokens\"><button type=\"button\" class=\"btn-neutral\">Tokens</button></a> \
                  <a href=\"/gui/vaults/{vid}/secret/new\"><button type=\"button\">Add secret</button></a>",
                 vid = escape(d.vault_id)
             )
@@ -706,6 +707,87 @@ pub fn token_created_page(username: &str, vault_id: &str, vault_name: &str, raw_
     );
     let _ = vault_name;
     layout("Token created", Some(username), &body)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// approles_page
+// Per-vault AppRole management: list roles (with role_id) + a create form.
+// ─────────────────────────────────────────────────────────────────────────────
+pub fn approles_page(
+    username: &str,
+    vault_id: &str,
+    vault_name: &str,
+    roles: &[crate::approle::ApproleListing],
+    error: Option<&str>,
+) -> String {
+    let err = error.map(|e| format!("<div class=\"err\">{}</div>", escape(e))).unwrap_or_default();
+    let mut rows = String::from("<table><tr><th>Name</th><th>Role ID</th><th>Paths</th><th>TTL</th><th></th></tr>");
+    if roles.is_empty() {
+        rows.push_str("<tr><td colspan=\"5\" class=\"muted\">No roles yet.</td></tr>");
+    }
+    for r in roles {
+        rows.push_str(&format!(
+            "<tr><td>{name}</td><td class=\"muted\" style=\"font-family:ui-monospace,monospace\">{rid}</td>\
+             <td class=\"muted\">{paths}</td><td class=\"muted\">{ttl}</td><td>\
+             <form method=\"post\" action=\"/gui/vaults/{vid}/approles/{id}/secret-id\" style=\"display:inline;margin:0\">\
+             <button class=\"link\" type=\"submit\">+ secret-id</button></form> &nbsp;\
+             <form method=\"post\" action=\"/gui/vaults/{vid}/approles/{id}/delete\" style=\"display:inline;margin:0\">\
+             <button class=\"link\" type=\"submit\">delete</button></form></td></tr>",
+            name = escape(&r.name),
+            rid = escape(&r.role_id),
+            paths = escape(&r.allowed_paths),
+            ttl = r.token_ttl.map(|s| format!("{}h", s / 3600)).unwrap_or_else(|| "none".into()),
+            vid = escape(vault_id),
+            id = escape(&r.id),
+        ));
+    }
+    rows.push_str("</table>");
+
+    let body = format!(
+        "<p><a href=\"/gui/vaults/{vid}\">&larr; {name}</a></p>{err}\
+         <div class=\"card\"><h1>AppRoles</h1>\
+         <p class=\"muted\">Machine login: a service exchanges its role_id + secret_id at \
+         <code>POST /v1/auth/approle/login</code> for a per-vault token.</p>{rows}</div>\
+         <div class=\"card\"><h2>Create role</h2>\
+         <form method=\"post\" action=\"/gui/vaults/{vid}/approles\">\
+         <label>Name</label><input name=\"name\" placeholder=\"ci-deployer\" required>\
+         <label>Allowed paths (one per line, * for all)</label>\
+         <textarea name=\"allowed_paths\" rows=\"3\" style=\"width:100%;font-family:ui-monospace,monospace;\
+         padding:10px;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--fg)\">*</textarea>\
+         <label>Allowed IPs / CIDRs (one per line, blank = any)</label>\
+         <textarea name=\"allowed_ips\" rows=\"2\" style=\"width:100%;font-family:ui-monospace,monospace;\
+         padding:10px;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--fg)\"></textarea>\
+         <label>Token TTL (hours, blank = never expires)</label><input name=\"ttl_hours\" type=\"number\" min=\"1\">\
+         <button type=\"submit\">Create role</button></form></div>",
+        vid = escape(vault_id),
+        name = escape(vault_name),
+        err = err,
+        rows = rows,
+    );
+    layout("AppRoles", Some(username), &body)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// approle_secret_page
+// One-time display of a freshly issued secret-id (+ the role_id + a usage hint).
+// ─────────────────────────────────────────────────────────────────────────────
+pub fn approle_secret_page(username: &str, vault_id: &str, vault_name: &str, role_id: &str, secret_id: &str) -> String {
+    let _ = vault_name;
+    let body = format!(
+        "<div class=\"card\"><h1>Secret ID issued</h1>\
+         <div class=\"err\">Copy the secret_id now — it will not be shown again.</div>\
+         <div class=\"kv\" style=\"margin-bottom:8px\"><div class=\"k\">role_id</div>\
+         <div class=\"v\" style=\"font-family:ui-monospace,monospace;word-break:break-all\">{rid}</div></div>\
+         <div class=\"kv\"><div class=\"k\">secret_id</div>\
+         <div class=\"v\" style=\"font-family:ui-monospace,monospace;word-break:break-all;color:var(--brand)\">{sid}</div></div>\
+         <h2 style=\"margin-top:18px\">Login</h2>\
+         <pre style=\"padding:14px;overflow:auto\">curl -X POST $ADDR/v1/auth/approle/login \\\n  -d '{{\"role_id\":\"{rid}\",\"secret_id\":\"{sid}\"}}'</pre>\
+         <a href=\"/gui/vaults/{vid}/approles\"><button type=\"button\">Done</button></a></div>",
+        rid = escape(role_id),
+        sid = escape(secret_id),
+        vid = escape(vault_id),
+    );
+    layout("Secret ID", Some(username), &body)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
