@@ -81,7 +81,9 @@ td{padding:9px 10px;border-bottom:1px solid var(--border-soft);font-size:14px;ve
 tr:last-child td{border-bottom:0}\
 pre{background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--fg)}\
 code{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-size:13px}\
-.themetoggle{font-size:16px;line-height:1;cursor:pointer}";
+.themetoggle{font-size:16px;line-height:1;cursor:pointer}\
+.version{position:fixed;bottom:8px;right:12px;font-size:12px;color:var(--muted);opacity:.65}\
+.version a{color:var(--muted)}";
 
 /// Inline head script: apply the saved/OS theme before paint (no flash) and a
 /// toggle handler. Kept tiny and dependency-free.
@@ -115,12 +117,14 @@ pub fn layout(title: &str, user: Option<&str>, body: &str) -> String {
          <div class=\"right\">\
          <button class=\"link themetoggle\" type=\"button\" onclick=\"evToggleTheme()\" \
          title=\"Toggle light / dark\" aria-label=\"Toggle theme\">◐</button>{right}</div></header>\
-         <main>{body}</main></body></html>",
+         <main>{body}</main>\
+         <div class=\"version\">v{version}</div></body></html>",
         title = escape(title),
         script = THEME_SCRIPT,
         style = STYLE,
         right = header_right,
-        body = body
+        body = body,
+        version = env!("CARGO_PKG_VERSION"),
     )
 }
 
