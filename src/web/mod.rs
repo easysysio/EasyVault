@@ -122,6 +122,9 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/gui/login", get(login_form).post(login_submit))
         .route("/gui/logout", post(logout))
         .route("/gui/users", get(users_list).post(users_create))
+        .route("/gui/users/{id}/disable", post(user_disable))
+        .route("/gui/users/{id}/enable", post(user_enable))
+        .route("/gui/account/password", get(password_form).post(password_change))
         .route("/gui/audit", get(audit_view))
         .route("/gui/seal", post(seal_instance))
         .route("/gui/vaults/new", get(vault_new_form))
@@ -379,6 +382,13 @@ pub struct PathParam {
     pub path: String,
 }
 
+/// Self-service password-change form.
+#[derive(Debug, Deserialize)]
+pub struct PasswordForm {
+    pub current: String,
+    pub new_password: String,
+}
+
 /// Vault network-ACL form (newline-separated IP/CIDR entries).
 #[derive(Debug, Deserialize)]
 pub struct AclForm {
@@ -407,7 +417,7 @@ async fn users_list(State(state): State<Arc<AppState>>, headers: HeaderMap) -> R
     let keys = guard!(auth state headers);
     guard!(master &keys);
     let users = users::list_all(&state.db).await?;
-    Ok(Html(pages::users_page(&keys.username, &users, None)).into_response())
+    Ok(Html(pages::users_page(&keys.username, &keys.user_id, &users, None)).into_response())
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -426,7 +436,78 @@ async fn users_create(
         Ok(_) => Ok(Redirect::to("/gui/users").into_response()),
         Err(AppError::BadRequest(msg)) => {
             let users = users::list_all(&state.db).await?;
-            Ok((StatusCode::BAD_REQUEST, Html(pages::users_page(&keys.username, &users, Some(&msg)))).into_response())
+            Ok((StatusCode::BAD_REQUEST, Html(pages::users_page(&keys.username, &keys.user_id, &users, Some(&msg)))).into_response())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /gui/users/{id}/disable
+// Master disables a user (blocks login) and drops their active sessions.
+// ─────────────────────────────────────────────────────────────────────────────
+async fn user_disable(
+    State(state): State<Arc<AppState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    Path(user_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    let keys = guard!(auth state headers);
+    guard!(master &keys);
+    if user_id == keys.user_id {
+        let users = users::list_all(&state.db).await?;
+        return Ok((StatusCode::BAD_REQUEST, Html(pages::users_page(&keys.username, &keys.user_id, &users, Some("You cannot disable your own account.")))).into_response());
+    }
+    users::set_active(&state.db, &user_id, false).await?;
+    session::evict_user(&state, &user_id).await;
+    audit_gui(&state, &headers, peer, "USER_DISABLE", None, None, &keys.user_id, 200).await;
+    Ok(Redirect::to("/gui/users").into_response())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /gui/users/{id}/enable
+// Master re-enables a previously disabled user.
+// ─────────────────────────────────────────────────────────────────────────────
+async fn user_enable(
+    State(state): State<Arc<AppState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    Path(user_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    let keys = guard!(auth state headers);
+    guard!(master &keys);
+    users::set_active(&state.db, &user_id, true).await?;
+    audit_gui(&state, &headers, peer, "USER_ENABLE", None, None, &keys.user_id, 200).await;
+    Ok(Redirect::to("/gui/users").into_response())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /gui/account/password
+// Self-service password-change form (any logged-in user).
+// ─────────────────────────────────────────────────────────────────────────────
+async fn password_form(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Result<Response, AppError> {
+    let keys = guard!(auth state headers);
+    Ok(Html(pages::account_password_page(&keys.username, None, None)).into_response())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /gui/account/password
+// Change the current user's password (crypto Flow 10).
+// ─────────────────────────────────────────────────────────────────────────────
+async fn password_change(
+    State(state): State<Arc<AppState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Form(form): Form<PasswordForm>,
+) -> Result<Response, AppError> {
+    let keys = guard!(auth state headers);
+    match users::change_password(&state.db, &keys.user_id, &form.current, &form.new_password).await {
+        Ok(()) => {
+            audit_gui(&state, &headers, peer, "PASSWORD_CHANGE", None, None, &keys.user_id, 200).await;
+            Ok(Html(pages::account_password_page(&keys.username, None, Some("Password changed."))).into_response())
+        }
+        Err(AppError::BadRequest(msg)) => {
+            Ok((StatusCode::BAD_REQUEST, Html(pages::account_password_page(&keys.username, Some(&msg), None))).into_response())
         }
         Err(e) => Err(e),
     }

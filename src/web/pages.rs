@@ -102,8 +102,8 @@ d.setAttribute('data-theme',c);try{localStorage.setItem('ev-theme',c);}catch(e){
 pub fn layout(title: &str, user: Option<&str>, body: &str) -> String {
     let header_right = match user {
         Some(name) => format!(
-            "<form method=\"post\" action=\"/gui/logout\" style=\"margin:0\">\
-             <span class=\"muted\">{}</span> &nbsp;\
+            "<a href=\"/gui/account/password\" class=\"muted\" title=\"Account\">{}</a> &nbsp;\
+             <form method=\"post\" action=\"/gui/logout\" style=\"margin:0;display:inline\">\
              <button class=\"link\" type=\"submit\">Log out</button></form>",
             escape(name)
         ),
@@ -307,15 +307,32 @@ pub fn dashboard_page(username: &str, is_master: bool, sealed: bool, vaults: &[V
 // users_page
 // Master-only user management: list users and create additional (non-master) ones.
 // ─────────────────────────────────────────────────────────────────────────────
-pub fn users_page(username: &str, users: &[crate::users::UserListItem], error: Option<&str>) -> String {
+pub fn users_page(username: &str, current_user_id: &str, users: &[crate::users::UserListItem], error: Option<&str>) -> String {
     let err = error.map(|e| format!("<div class=\"err\">{}</div>", escape(e))).unwrap_or_default();
-    let mut rows = String::from("<table><tr><th>Username</th><th>Role</th><th>State</th></tr>");
+    let mut rows = String::from("<table><tr><th>Username</th><th>Role</th><th>State</th><th></th></tr>");
     for u in users {
+        // No disable control for yourself or other master accounts.
+        let action = if u.id == current_user_id || u.is_master {
+            String::new()
+        } else if u.active {
+            format!(
+                "<form method=\"post\" action=\"/gui/users/{id}/disable\" style=\"margin:0\">\
+                 <button class=\"link\" type=\"submit\">disable</button></form>",
+                id = escape(&u.id)
+            )
+        } else {
+            format!(
+                "<form method=\"post\" action=\"/gui/users/{id}/enable\" style=\"margin:0\">\
+                 <button class=\"link\" type=\"submit\">enable</button></form>",
+                id = escape(&u.id)
+            )
+        };
         rows.push_str(&format!(
-            "<tr><td>{name}</td><td>{role}</td><td>{state}</td></tr>",
+            "<tr><td>{name}</td><td>{role}</td><td>{state}</td><td>{action}</td></tr>",
             name = escape(&u.username),
             role = role_pill(u.is_master),
             state = if u.active { "<span class=\"pill ok\">active</span>" } else { "<span class=\"pill warn\">disabled</span>" },
+            action = action,
         ));
     }
     rows.push_str("</table>");
@@ -332,6 +349,29 @@ pub fn users_page(username: &str, users: &[crate::users::UserListItem], error: O
         rows = rows,
     );
     layout("Users", Some(username), &body)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// account_password_page
+// Self-service password change form (current + new password).
+// ─────────────────────────────────────────────────────────────────────────────
+pub fn account_password_page(username: &str, error: Option<&str>, ok: Option<&str>) -> String {
+    let err = error.map(|e| format!("<div class=\"err\">{}</div>", escape(e))).unwrap_or_default();
+    let note = ok
+        .map(|m| format!("<div class=\"err\" style=\"background:var(--ok-bg);border-color:var(--ok-border);color:var(--ok-fg)\">{}</div>", escape(m)))
+        .unwrap_or_default();
+    let body = format!(
+        "<p><a href=\"/gui/\">&larr; Dashboard</a></p>\
+         <div class=\"card\"><h1>Change password</h1>{err}{note}\
+         <form method=\"post\" action=\"/gui/account/password\">\
+         <label>Current password</label><input name=\"current\" type=\"password\" autofocus required>\
+         <label>New password</label><input name=\"new_password\" type=\"password\" required>\
+         <p class=\"muted\">At least 8 characters. Your vault access is preserved.</p>\
+         <button type=\"submit\">Change password</button></form></div>",
+        err = err,
+        note = note,
+    );
+    layout("Change password", Some(username), &body)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -8,6 +8,7 @@
 // =============================================================================
 
 use uuid::Uuid;
+use zeroize::Zeroize;
 
 use crate::crypto::argon2::{self, SALT_LEN};
 use crate::crypto::{self, aes, ecdh};
@@ -39,6 +40,7 @@ pub async fn count_users(db: &sqlx::SqlitePool) -> Result<i64, AppError> {
 /// A compact user entry for management listings.
 #[derive(Debug, sqlx::FromRow)]
 pub struct UserListItem {
+    pub id: String,
     pub username: String,
     pub is_master: bool,
     pub active: bool,
@@ -46,15 +48,102 @@ pub struct UserListItem {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // list_all
-// All users (username, role, active state) ordered by username.
+// All users (id, username, role, active state) ordered by username.
 // ─────────────────────────────────────────────────────────────────────────────
 pub async fn list_all(db: &sqlx::SqlitePool) -> Result<Vec<UserListItem>, AppError> {
     let rows = sqlx::query_as::<_, UserListItem>(
-        "SELECT username, is_master, active FROM users ORDER BY username",
+        "SELECT id, username, is_master, active FROM users ORDER BY username",
     )
     .fetch_all(db)
     .await?;
     Ok(rows)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// get_by_id
+// Fetch a single user by id, or None if absent.
+// ─────────────────────────────────────────────────────────────────────────────
+pub async fn get_by_id(db: &sqlx::SqlitePool, id: &str) -> Result<Option<UserRow>, AppError> {
+    let row = sqlx::query_as::<_, UserRow>(
+        "SELECT id, username, password_hash, salt, public_key, private_key_enc, \
+         private_key_nonce, is_master, active FROM users WHERE id = ?",
+    )
+    .bind(id)
+    .fetch_optional(db)
+    .await?;
+    Ok(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// set_active
+// Enable or disable a user. A disabled user cannot log in (existing sessions
+// are dropped separately by the caller).
+// ─────────────────────────────────────────────────────────────────────────────
+pub async fn set_active(db: &sqlx::SqlitePool, user_id: &str, active: bool) -> Result<(), AppError> {
+    sqlx::query("UPDATE users SET active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+        .bind(active)
+        .bind(user_id)
+        .execute(db)
+        .await?;
+    tracing::info!(%user_id, active, "user active state changed");
+    Ok(())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// change_password — crypto Flow 10 (Password Change)
+// Verify the old password, re-derive the user_key to unlock the private key,
+// then re-wrap it under a new salt+user_key. The vault_user_keys rows are
+// untouched (they use ECDH shared secrets, not the user_key).
+// ─────────────────────────────────────────────────────────────────────────────
+pub async fn change_password(
+    db: &sqlx::SqlitePool,
+    user_id: &str,
+    old_password: &str,
+    new_password: &str,
+) -> Result<(), AppError> {
+    let user = get_by_id(db, user_id).await?.ok_or(AppError::NotFound)?;
+    if !argon2::verify_password(old_password.as_bytes(), &user.salt, &user.password_hash) {
+        return Err(AppError::BadRequest("current password is incorrect".into()));
+    }
+    if new_password.len() < 8 {
+        return Err(AppError::BadRequest("new password must be at least 8 characters".into()));
+    }
+
+    // Unlock the private key with the old user_key.
+    let old_user_key = argon2::derive_user_key(old_password.as_bytes(), &user.salt)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    if user.private_key_nonce.len() != crypto::NONCE_LEN {
+        return Err(AppError::Internal("corrupt private-key nonce".into()));
+    }
+    let mut nonce = [0u8; crypto::NONCE_LEN];
+    nonce.copy_from_slice(&user.private_key_nonce);
+    let mut private_key = aes::decrypt(&old_user_key, &nonce, &user.private_key_enc)
+        .map_err(|_| AppError::Internal("failed to decrypt private key".into()))?;
+
+    // Re-wrap under a fresh salt + user_key.
+    let new_salt = crypto::random_bytes::<SALT_LEN>();
+    let new_pw_hash = argon2::password_hash(new_password.as_bytes(), &new_salt)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let new_user_key = argon2::derive_user_key(new_password.as_bytes(), &new_salt)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    let (new_nonce, new_priv_enc) = aes::encrypt(&new_user_key, &private_key)
+        .map_err(|e| AppError::Internal(e.to_string()))?;
+    private_key.zeroize();
+
+    sqlx::query(
+        "UPDATE users SET salt = ?, password_hash = ?, private_key_enc = ?, \
+         private_key_nonce = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+    )
+    .bind(new_salt.to_vec())
+    .bind(new_pw_hash.to_vec())
+    .bind(new_priv_enc)
+    .bind(new_nonce.to_vec())
+    .bind(user_id)
+    .execute(db)
+    .await?;
+
+    tracing::info!(%user_id, "user password changed");
+    Ok(())
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

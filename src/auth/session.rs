@@ -209,6 +209,19 @@ pub async fn logout(state: &Arc<AppState>, raw_token: &str) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// evict_user
+// Drop all of a user's sessions (in memory + gui_sessions) — used when a user
+// is disabled so existing logins stop working immediately.
+// ─────────────────────────────────────────────────────────────────────────────
+pub async fn evict_user(state: &Arc<AppState>, user_id: &str) {
+    state.sessions.write().await.retain(|_, s| s.user_id != user_id);
+    let _ = sqlx::query("DELETE FROM gui_sessions WHERE user_id = ?")
+        .bind(user_id)
+        .execute(&state.db)
+        .await;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // evict
 // Internal: delete a session (by hash) from the in-memory map and gui_sessions.
 // ─────────────────────────────────────────────────────────────────────────────

@@ -3,6 +3,26 @@
 All notable changes to EasyVault are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added — user lifecycle
+- **Disable / enable users** (master only, on `/gui/users`) — a disabled user
+  can't log in, and their active sessions are dropped immediately. You can't
+  disable your own or another master account. Audited (`USER_DISABLE`/`ENABLE`).
+- **Self-service password change** (`/gui/account/password`, crypto Flow 10) —
+  verifies the current password, re-wraps the X25519 private key under a new
+  salt + key; **vault access is preserved** (the `vault_user_keys` rows use ECDH
+  shared secrets, not the password). Audited (`PASSWORD_CHANGE`). The header
+  username now links here. (Note: master cannot reset another user's password —
+  the key model makes that impossible by design.)
+
+### Added — test coverage
+- 8 integration tests against an in-memory database covering the trust-critical
+  flows: registration/login, cross-user vault access (escrow + ECDH), secret
+  versioning, API tokens (Flow 7/8 + path ACL + revoke), key rotation (Flow 9),
+  password change (Flow 10), user disable, and audit HMAC + tamper detection.
+  **21 tests total.**
+
 ## [0.1.2] — 2026-06-19
 
 ### Added — dark / light theme

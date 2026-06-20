@@ -12,6 +12,8 @@ mod auth;
 mod config;
 mod crypto;
 mod error;
+#[cfg(test)]
+mod integration_tests;
 mod secrets;
 mod state;
 mod storage;

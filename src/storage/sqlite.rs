@@ -35,3 +35,23 @@ pub async fn open_sqlite(path: &Path) -> anyhow::Result<SqlitePool> {
     sqlx::migrate!("./migrations").run(&pool).await?;
     Ok(pool)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// test_pool
+// An in-memory, migrated SQLite pool for unit/integration tests. A single
+// connection keeps the in-memory database alive for the test's lifetime.
+// ─────────────────────────────────────────────────────────────────────────────
+#[cfg(test)]
+pub async fn test_pool() -> SqlitePool {
+    use std::str::FromStr;
+    let options = SqliteConnectOptions::from_str("sqlite::memory:")
+        .unwrap()
+        .foreign_keys(true);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+        .unwrap();
+    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+    pool
+}
