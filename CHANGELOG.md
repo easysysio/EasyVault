@@ -3,7 +3,7 @@
 All notable changes to EasyVault are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.1.5] — 2026-06-20
 
 ### Added — single-use / N-use secrets (burn after read)
 - A secret can cap how many times it may be fetched over the token API. Set
@@ -297,6 +297,7 @@ HMAC audit log, vault-key rotation, TLS, and a fully browser-based bootstrap.
   secret read/write → API-token REST access → IP ACL → audit + tamper detection
   → key rotation, over both HTTP and TLS.
 
+[0.1.5]: https://github.com/yarivha/EasyVault/releases/tag/v0.1.5
 [0.1.4]: https://github.com/yarivha/EasyVault/releases/tag/v0.1.4
 [0.1.3]: https://github.com/yarivha/EasyVault/releases/tag/v0.1.3
 [0.1.2]: https://github.com/yarivha/EasyVault/releases/tag/v0.1.2
