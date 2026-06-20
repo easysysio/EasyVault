@@ -1,0 +1,26 @@
+<service>
+  <id>EasyVault</id>
+  <name>EasyVault</name>
+  <description>EasyVault — self-hosted secrets manager (https://github.com/yarivha/EasyVault)</description>
+
+  <!-- %BASE% is the directory containing this wrapper (the install dir). -->
+  <executable>%BASE%\easyvault.exe</executable>
+  <workingdirectory>%ProgramData%\EasyVault</workingdirectory>
+
+  <!-- Database + TLS certs live under ProgramData, config alongside them. -->
+  <env name="EASYVAULT_HOME" value="%ProgramData%\EasyVault"/>
+  <env name="EASYVAULT_CONFIG" value="%ProgramData%\EasyVault\config.toml"/>
+
+  <!-- Restart on failure (mirrors the systemd unit's Restart=on-failure). -->
+  <onfailure action="restart" delay="5 sec"/>
+  <onfailure action="restart" delay="10 sec"/>
+  <onfailure action="none"/>
+
+  <logpath>%ProgramData%\EasyVault\logs</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>5</keepFiles>
+  </log>
+
+  <startmode>Automatic</startmode>
+</service>

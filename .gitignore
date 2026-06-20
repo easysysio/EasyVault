@@ -21,6 +21,7 @@ target
 RELEASE_NOTES.md
 # Files copied into the NSIS dir during the Windows build
 /packaging/windows/easyvault.exe
+/packaging/windows/easyvault-service.exe
 /packaging/windows/config.toml.example
 /packaging/windows/README.md
 

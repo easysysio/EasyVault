@@ -3,6 +3,17 @@
 All notable changes to EasyVault are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added — Windows service
+- The Windows installer now registers EasyVault as a **Windows service** (via
+  the [WinSW](https://github.com/winsw/winsw) wrapper, fetched in CI), set to
+  start automatically and restart on failure — mirroring the Linux systemd unit.
+  Data (database, TLS certs, config, logs) lives under `%ProgramData%\EasyVault`
+  so it survives upgrades; uninstall stops/removes the service but preserves the
+  data. The Start-menu shortcut now opens the dashboard (`http://localhost:8200`)
+  instead of launching the binary directly.
+
 ## [0.1.3] — 2026-06-20
 
 ### Added — UI

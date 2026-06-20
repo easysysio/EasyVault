@@ -95,6 +95,9 @@ jobs:
           cp target/x86_64-pc-windows-gnu/release/easyvault.exe packaging/windows/easyvault.exe
           cp config.toml.example packaging/windows/config.toml.example
           cp README.md packaging/windows/README.md
+          # WinSW service wrapper (drives the binary as a Windows service).
+          curl -fsSL -o packaging/windows/easyvault-service.exe \
+            https://github.com/winsw/winsw/releases/download/v2.12.0/WinSW.NET4.exe
           INSTALLER="easyvault-${VERSION}-${RELEASE}-x86_64.exe"
           makensis -DVERSION="$VERSION" "-DINSTALLER_NAME=${INSTALLER}" packaging/windows/installer.nsi
           mv "packaging/windows/${INSTALLER}" dist/
