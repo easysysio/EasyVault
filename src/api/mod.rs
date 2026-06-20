@@ -27,6 +27,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/v1/sys/unseal", post(routes::sys::unseal))
         .route("/v1/sys/seal-status", get(routes::sys::seal_status))
         .route("/v1/sys/health", get(routes::sys::health))
+        .route("/v1/auth/token/lookup-self", get(routes::auth_token::lookup_self).post(routes::auth_token::lookup_self))
+        .route("/v1/auth/token/revoke-self", post(routes::auth_token::revoke_self))
+        .route("/v1/auth/token/renew-self", post(routes::auth_token::renew_self))
         .route(
             "/v1/secret/data/{*path}",
             get(routes::kv::read).post(routes::kv::write).delete(routes::kv::delete),

@@ -5,6 +5,17 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — Vault token self-management (`/v1/auth/token/*`)
+- **`GET/POST /v1/auth/token/lookup-self`** — metadata about the calling token
+  (display name, policies/paths, ttl, renewable, expiry, vault) — what real
+  Vault clients call to introspect their token.
+- **`POST /v1/auth/token/revoke-self`** — the token revokes itself (204).
+- **`POST /v1/auth/token/renew-self`** — extend a renewable token by an
+  `increment` (seconds) or its stored renew period. Tokens created **with a TTL
+  are now renewable**; the TTL is the default renew period (migration 003 adds
+  `api_tokens.renew_period`). All authenticated by `X-Vault-Token`.
+- New integration test (22 total).
+
 ### Added — Windows service
 - The Windows installer now registers EasyVault as a **Windows service** (via
   the [WinSW](https://github.com/winsw/winsw) wrapper, fetched in CI), set to

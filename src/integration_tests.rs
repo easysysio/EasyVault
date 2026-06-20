@@ -136,6 +136,41 @@ async fn token_create_authenticate_revoke() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// token self-management: lookup-self / renew-self / revoke-self
+// ─────────────────────────────────────────────────────────────────────────────
+#[tokio::test]
+async fn token_self_lookup_renew_revoke() {
+    let db = test_pool().await;
+    let master_key = crypto::random_key();
+    let mid = users::create_user(&db, "m", "masterpass", true).await.unwrap();
+    users::create_user(&db, "ed", "edpassword", false).await.unwrap();
+    let vid = vault::create_vault(&db, "v", "", &mid, &master_key).await.unwrap();
+    vault::assign(&db, &vid, &master_key, "ed", Role::Editor, &mid).await.unwrap();
+    let ed_id = users::get_by_username(&db, "ed").await.unwrap().unwrap().id;
+    let ed_priv = private_key(&db, "ed", "edpassword").await;
+
+    // A token WITH a TTL is renewable.
+    let raw = tokens::create_token(&db, &vid, &ed_id, &ed_priv, &master_key, "ci", &["*".into()], &[], Some(3600)).await.unwrap();
+    let info = tokens::lookup(&db, &raw).await.unwrap();
+    assert!(info.renewable);
+    assert!(info.ttl_seconds() > 3500 && info.ttl_seconds() <= 3600);
+
+    // Renew extends the lifetime.
+    let renewed = tokens::renew(&db, &raw, Some(7200)).await.unwrap();
+    assert!(renewed.ttl_seconds() > 7100);
+
+    // Revoke-self invalidates it everywhere.
+    tokens::revoke_self(&db, &raw).await.unwrap();
+    assert!(tokens::lookup(&db, &raw).await.is_err());
+    assert!(tokens::authenticate_token(&db, &master_key, &raw).await.is_err());
+
+    // A token WITHOUT a TTL is not renewable.
+    let perm = tokens::create_token(&db, &vid, &ed_id, &ed_priv, &master_key, "perm", &["*".into()], &[], None).await.unwrap();
+    assert!(!tokens::lookup(&db, &perm).await.unwrap().renewable);
+    assert!(tokens::renew(&db, &perm, None).await.is_err());
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // rotation (Flow 9): members and live tokens still decrypt after re-keying
 // ─────────────────────────────────────────────────────────────────────────────
 #[tokio::test]
