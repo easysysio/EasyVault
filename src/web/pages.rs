@@ -114,6 +114,8 @@ pub fn layout(title: &str, user: Option<&str>, body: &str) -> String {
          <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\
          <link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\">\
          <link rel=\"icon\" type=\"image/x-icon\" href=\"/favicon.ico\" sizes=\"any\">\
+         <link rel=\"apple-touch-icon\" href=\"/apple-touch-icon.png\">\
+         <meta name=\"theme-color\" content=\"#238636\">\
          <title>{title} · EasyVault</title><script>{script}</script><style>{style}</style></head><body>\
          <header><div class=\"brand\">Easy<span>Vault</span></div>\
          <div class=\"right\">\

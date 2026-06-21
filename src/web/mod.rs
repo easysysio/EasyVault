@@ -116,6 +116,8 @@ pub fn routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/favicon.ico", get(favicon_ico))
         .route("/favicon.svg", get(favicon_svg))
+        .route("/apple-touch-icon.png", get(apple_touch_icon))
+        .route("/apple-touch-icon-precomposed.png", get(apple_touch_icon))
         .route("/gui", get(gui_root))
         .route("/gui/", get(gui_root))
         .route("/gui/unseal", get(unseal_form).post(unseal_submit))
@@ -238,6 +240,95 @@ async fn favicon_ico() -> Response {
             (header::CACHE_CONTROL, "public, max-age=86400"),
         ],
         FAVICON_ICO.clone(),
+    )
+        .into_response()
+}
+
+/// 180×180 PNG apple-touch-icon, generated once at first request. iOS requires
+/// a PNG (it won't use the SVG) and masks/rounds the corners itself, so this is
+/// a full-bleed brand-green square with the white keyhole.
+static APPLE_TOUCH_PNG: LazyLock<Vec<u8>> = LazyLock::new(build_apple_touch_png);
+
+// Draw the keyhole glyph and encode a true-color PNG by hand — no image crate.
+// DEFLATE is emitted as stored (uncompressed) blocks, which keeps the encoder
+// to a CRC-32 + Adler-32 and avoids pulling in a compression dependency.
+fn build_apple_touch_png() -> Vec<u8> {
+    const N: i32 = 180;
+    let bg = [0x23u8, 0x86, 0x36, 0xFF]; // #238636 RGBA
+    let fg = [0xFFu8, 0xFF, 0xFF, 0xFF]; // white keyhole
+    let (cx, cy, r) = (90i32, 78i32, 34i32);
+
+    // Raw scanlines: each row prefixed with filter byte 0 (none), then RGBA.
+    let mut raw = Vec::with_capacity((N * (1 + N * 4)) as usize);
+    for y in 0..N {
+        raw.push(0);
+        for x in 0..N {
+            let (dx, dy) = (x - cx, y - cy);
+            let in_circle = dx * dx + dy * dy <= r * r;
+            let in_slot = x >= cx - 18 && x <= cx + 18 && y >= cy && y <= 150;
+            raw.extend_from_slice(if in_circle || in_slot { &fg } else { &bg });
+        }
+    }
+
+    // zlib wrapper around stored DEFLATE blocks (≤ 65535 bytes each).
+    let mut zlib = vec![0x78, 0x01];
+    let mut i = 0usize;
+    while i < raw.len() {
+        let block = (raw.len() - i).min(65535);
+        let bfinal = if i + block >= raw.len() { 1u8 } else { 0u8 };
+        zlib.push(bfinal); // BTYPE = 00 (stored)
+        let len = block as u16;
+        zlib.extend_from_slice(&len.to_le_bytes());
+        zlib.extend_from_slice(&(!len).to_le_bytes());
+        zlib.extend_from_slice(&raw[i..i + block]);
+        i += block;
+    }
+    zlib.extend_from_slice(&adler32(&raw).to_be_bytes());
+
+    let mut png = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+    let mut ihdr = Vec::with_capacity(13);
+    ihdr.extend_from_slice(&N.to_be_bytes());
+    ihdr.extend_from_slice(&N.to_be_bytes());
+    ihdr.extend_from_slice(&[8, 6, 0, 0, 0]); // 8-bit RGBA, no interlace
+    png_chunk(&mut png, b"IHDR", &ihdr);
+    png_chunk(&mut png, b"IDAT", &zlib);
+    png_chunk(&mut png, b"IEND", &[]);
+    png
+}
+
+// Append a length-prefixed, CRC-checked PNG chunk.
+fn png_chunk(out: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
+    out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+    out.extend_from_slice(kind);
+    out.extend_from_slice(data);
+    let mut crc = 0xFFFF_FFFFu32;
+    for &b in kind.iter().chain(data) {
+        crc ^= b as u32;
+        for _ in 0..8 {
+            crc = if crc & 1 != 0 { (crc >> 1) ^ 0xEDB8_8320 } else { crc >> 1 };
+        }
+    }
+    out.extend_from_slice(&(!crc).to_be_bytes());
+}
+
+// Adler-32 checksum for the zlib trailer.
+fn adler32(data: &[u8]) -> u32 {
+    let (mut a, mut b) = (1u32, 0u32);
+    for &byte in data {
+        a = (a + byte as u32) % 65521;
+        b = (b + a) % 65521;
+    }
+    (b << 16) | a
+}
+
+// GET /apple-touch-icon[-precomposed].png — iOS "Add to Home Screen" icon.
+async fn apple_touch_icon() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "image/png"),
+            (header::CACHE_CONTROL, "public, max-age=86400"),
+        ],
+        APPLE_TOUCH_PNG.clone(),
     )
         .into_response()
 }

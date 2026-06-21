@@ -19,12 +19,18 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
   ("Integrity") ended up rendered outside the box. Cards now scroll horizontally
   instead of overflowing, keeping every column inside the frame.
 
-### Added — favicon
+### Added — favicon, mobile icons & theme colour
 - The GUI now ships its own brand-green "keyhole" favicon. A crisp scalable
   `/favicon.svg` is the primary icon for modern browsers, with a generated
   32×32 `/favicon.ico` (built in-process — no image tooling at build time) as
-  the legacy fallback for the browser's default probe. Both are served
-  unauthenticated and cached for a day.
+  the legacy fallback for the browser's default probe.
+- Added a 180×180 `apple-touch-icon.png` (also served at the
+  `-precomposed.png` path) for iOS "Add to Home Screen" bookmarks. The PNG is
+  encoded in-process by a tiny dependency-free encoder (stored DEFLATE blocks +
+  CRC-32/Adler-32), since iOS won't use the SVG.
+- Added a `theme-color` meta (`#238636`) so mobile browser chrome adopts the
+  EasyVault brand colour. All icons are served unauthenticated and cached for a
+  day.
 
 ## [0.1.6] — 2026-06-21
 
