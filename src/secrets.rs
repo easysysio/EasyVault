@@ -102,9 +102,12 @@ pub async fn reads_remaining(db: &sqlx::SqlitePool, vault_id: &str, path: &str) 
 // Latest live version per secret path in a vault, ordered by path.
 // ─────────────────────────────────────────────────────────────────────────────
 pub async fn list_paths(db: &sqlx::SqlitePool, vault_id: &str) -> Result<Vec<SecretListing>, AppError> {
+    // Only paths that still have a live version — soft-deleted/destroyed/burned
+    // paths drop out of the listing.
     let rows = sqlx::query_as::<_, SecretListing>(
         "SELECT path, MAX(version) AS version, MAX(created_at) AS created_at \
-         FROM secrets WHERE vault_id = ? AND destroyed = 0 GROUP BY path ORDER BY path",
+         FROM secrets WHERE vault_id = ? AND destroyed = 0 AND deleted_at IS NULL \
+         GROUP BY path ORDER BY path",
     )
     .bind(vault_id)
     .fetch_all(db)
@@ -242,12 +245,31 @@ pub async fn read_and_consume(
 // ─────────────────────────────────────────────────────────────────────────────
 // soft_delete
 // Mark the latest live version of `path` as deleted (recoverable; value kept).
+// Vault-compatible `DELETE /v1/secret/data/:path` — deletes one version.
 // ─────────────────────────────────────────────────────────────────────────────
 pub async fn soft_delete(db: &sqlx::SqlitePool, vault_id: &str, path: &str) -> Result<(), AppError> {
     sqlx::query(
         "UPDATE secrets SET deleted_at = CURRENT_TIMESTAMP \
          WHERE id = (SELECT id FROM secrets WHERE vault_id = ? AND path = ? \
                      AND destroyed = 0 AND deleted_at IS NULL ORDER BY version DESC LIMIT 1)",
+    )
+    .bind(vault_id)
+    .bind(path)
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// delete_path
+// Delete the whole secret: soft-delete every live version of `path`, so it
+// disappears from the listing. A later write to the same path starts a new
+// (live) version. Used by the GUI "Delete secret" action.
+// ─────────────────────────────────────────────────────────────────────────────
+pub async fn delete_path(db: &sqlx::SqlitePool, vault_id: &str, path: &str) -> Result<(), AppError> {
+    sqlx::query(
+        "UPDATE secrets SET deleted_at = CURRENT_TIMESTAMP \
+         WHERE vault_id = ? AND path = ? AND destroyed = 0 AND deleted_at IS NULL",
     )
     .bind(vault_id)
     .bind(path)

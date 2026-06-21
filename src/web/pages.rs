@@ -860,9 +860,10 @@ pub fn secret_view_page(
          overflow:auto;color:var(--fg)\">{json}</pre>\
          <div style=\"display:flex;gap:10px\">\
          <a href=\"/gui/vaults/{vid}/secret/new?path={pathenc}\"><button type=\"button\">New version</button></a>\
-         <form method=\"post\" action=\"/gui/vaults/{vid}/secret/delete\" style=\"margin:0\">\
+         <form method=\"post\" action=\"/gui/vaults/{vid}/secret/delete\" style=\"margin:0\" \
+         onsubmit=\"return confirm('Delete this secret and all its versions?');\">\
          <input type=\"hidden\" name=\"path\" value=\"{path}\">\
-         <button type=\"submit\" class=\"btn-danger\">Delete</button></form></div></div>\
+         <button type=\"submit\" class=\"btn-danger\">Delete secret</button></form></div></div>\
          <div class=\"card\"><h2>Versions</h2>{vrows}</div>",
         vid = escape(vault_id),
         name = escape(vault_name),

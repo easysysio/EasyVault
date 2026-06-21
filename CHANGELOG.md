@@ -3,6 +3,19 @@
 All notable changes to EasyVault are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Fixed — deleting a secret
+- A fully-deleted secret no longer lingers in the vault's secret list. The
+  listing now excludes paths whose only versions are soft-deleted (it already
+  excluded destroyed/burned ones) — previously such a path stayed visible but
+  led to a "not found" dead end.
+- The GUI **Delete** now deletes the **whole secret** (all versions) in one
+  action — relabelled **"Delete secret"** with a confirm — instead of one
+  version at a time. Re-creating the same path afterwards starts a fresh live
+  version. (The Vault-compatible `DELETE /v1/secret/data/:path` still
+  soft-deletes a single version.)
+
 ## [0.1.5] — 2026-06-20
 
 ### Added — single-use / N-use secrets (burn after read)

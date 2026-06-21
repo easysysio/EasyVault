@@ -202,6 +202,37 @@ async fn rotation_preserves_access() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// delete: a fully-deleted secret leaves the listing and can be recreated
+// ─────────────────────────────────────────────────────────────────────────────
+#[tokio::test]
+async fn delete_path_removes_from_listing_and_allows_recreate() {
+    let db = test_pool().await;
+    let master_key = crypto::random_key();
+    let mid = users::create_user(&db, "m", "masterpass", true).await.unwrap();
+    let vid = vault::create_vault(&db, "v", "", &mid, &master_key).await.unwrap();
+    let vkey = vault::resolve_vault_key_via_master(&db, &vid, &master_key).await.unwrap();
+
+    // Two versions, then delete the whole secret.
+    secrets::write(&db, &vid, "db/pg", &json!({"v": 1}), &vkey, &mid, None).await.unwrap();
+    secrets::write(&db, &vid, "db/pg", &json!({"v": 2}), &vkey, &mid, None).await.unwrap();
+    assert_eq!(secrets::list_paths(&db, &vid).await.unwrap().len(), 1);
+
+    secrets::delete_path(&db, &vid, "db/pg").await.unwrap();
+    // Gone from the listing, and no live version to read.
+    assert!(secrets::list_paths(&db, &vid).await.unwrap().is_empty());
+    assert!(secrets::read_latest(&db, &vid, "db/pg", &vkey).await.unwrap().is_none());
+
+    // Recreating the same path starts a new live version (v3).
+    let v = secrets::write(&db, &vid, "db/pg", &json!({"v": 3}), &vkey, &mid, None).await.unwrap();
+    assert_eq!(v, 3);
+    let list = secrets::list_paths(&db, &vid).await.unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].version, 3);
+    let (_, value) = secrets::read_latest(&db, &vid, "db/pg", &vkey).await.unwrap().unwrap();
+    assert_eq!(value["v"], 3);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // burn-after-read: a single/N-use secret is destroyed once its reads run out
 // ─────────────────────────────────────────────────────────────────────────────
 #[tokio::test]

@@ -835,7 +835,7 @@ async fn secret_view(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /gui/vaults/{id}/secret/delete
-// Soft-delete the latest version of a secret path.
+// Delete the whole secret (all versions); it drops out of the listing.
 // ─────────────────────────────────────────────────────────────────────────────
 async fn secret_delete(
     State(state): State<Arc<AppState>>,
@@ -849,7 +849,7 @@ async fn secret_delete(
     if !load_access(&state, &keys, &vault_id).await?.can_write() {
         return Ok(access_denied(&keys));
     }
-    secrets::soft_delete(&state.db, &vault_id, &form.path).await?;
+    secrets::delete_path(&state.db, &vault_id, &form.path).await?;
     audit_gui(&state, &headers, peer, "DELETE", Some(&vault_id), Some(form.path.trim()), &keys.user_id, 200).await;
     Ok(Redirect::to(&format!("/gui/vaults/{vault_id}")).into_response())
 }
