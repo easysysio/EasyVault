@@ -25,6 +25,7 @@ pub struct ApproleRow {
     pub allowed_paths: String,
     pub allowed_ips: String,
     pub token_ttl: Option<i64>,
+    pub writable: bool,
     pub created_by: Option<String>,
 }
 
@@ -50,6 +51,7 @@ pub async fn create_role(
     allowed_paths: &[String],
     allowed_ips: &[String],
     token_ttl: Option<i64>,
+    writable: bool,
     created_by: &str,
 ) -> Result<String, AppError> {
     let name = name.trim();
@@ -64,8 +66,8 @@ pub async fn create_role(
     let paths_vec: Vec<String> = if allowed_paths.is_empty() { vec!["*".into()] } else { allowed_paths.to_vec() };
 
     sqlx::query(
-        "INSERT INTO approles (id, name, vault_id, role_id, allowed_paths, allowed_ips, token_ttl, created_by) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO approles (id, name, vault_id, role_id, allowed_paths, allowed_ips, token_ttl, writable, created_by) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&id)
     .bind(name)
@@ -74,6 +76,7 @@ pub async fn create_role(
     .bind(serde_json::to_string(&paths_vec).unwrap_or_else(|_| "[\"*\"]".into()))
     .bind(serde_json::to_string(allowed_ips).unwrap_or_else(|_| "[]".into()))
     .bind(token_ttl)
+    .bind(writable)
     .bind(created_by)
     .execute(db)
     .await?;
@@ -87,7 +90,7 @@ pub async fn create_role(
 // ─────────────────────────────────────────────────────────────────────────────
 pub async fn get_by_name(db: &sqlx::SqlitePool, name: &str) -> Result<Option<ApproleRow>, AppError> {
     Ok(sqlx::query_as::<_, ApproleRow>(
-        "SELECT id, name, vault_id, role_id, allowed_paths, allowed_ips, token_ttl, created_by FROM approles WHERE name = ?",
+        "SELECT id, name, vault_id, role_id, allowed_paths, allowed_ips, token_ttl, writable, created_by FROM approles WHERE name = ?",
     )
     .bind(name)
     .fetch_optional(db)
@@ -96,7 +99,7 @@ pub async fn get_by_name(db: &sqlx::SqlitePool, name: &str) -> Result<Option<App
 
 pub async fn get_by_role_id(db: &sqlx::SqlitePool, role_id: &str) -> Result<Option<ApproleRow>, AppError> {
     Ok(sqlx::query_as::<_, ApproleRow>(
-        "SELECT id, name, vault_id, role_id, allowed_paths, allowed_ips, token_ttl, created_by FROM approles WHERE role_id = ?",
+        "SELECT id, name, vault_id, role_id, allowed_paths, allowed_ips, token_ttl, writable, created_by FROM approles WHERE role_id = ?",
     )
     .bind(role_id)
     .fetch_optional(db)
@@ -184,6 +187,7 @@ pub async fn login(
         &allowed_paths,
         &allowed_ips,
         role.token_ttl,
+        role.writable,
         role.created_by.as_deref(),
     )
     .await?;

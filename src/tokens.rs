@@ -28,6 +28,7 @@ pub struct TokenListing {
     pub display_name: Option<String>,
     pub allowed_paths: String,
     pub allowed_ips: String,
+    pub writable: bool,
     pub expires_at: Option<String>,
     pub last_used_at: Option<String>,
     pub revoked: bool,
@@ -41,6 +42,7 @@ pub struct TokenAuth {
     pub created_by: Option<String>,
     pub allowed_paths: Vec<String>,
     pub allowed_ips: Vec<String>,
+    pub writable: bool,
     pub vault_key: Zeroizing<[u8; 32]>,
 }
 
@@ -61,10 +63,11 @@ pub async fn create_token(
     allowed_paths: &[String],
     allowed_ips: &[String],
     ttl_seconds: Option<i64>,
+    writable: bool,
 ) -> Result<String, AppError> {
     // Proves the creator actually has access to this vault.
     let vault_key = vault::resolve_vault_key(db, vault_id, creator_id, creator_private).await?;
-    mint(db, vault_id, &vault_key, master_key, display_name, allowed_paths, allowed_ips, ttl_seconds, Some(creator_id)).await
+    mint(db, vault_id, &vault_key, master_key, display_name, allowed_paths, allowed_ips, ttl_seconds, writable, Some(creator_id)).await
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -81,10 +84,11 @@ pub async fn create_token_via_master(
     allowed_paths: &[String],
     allowed_ips: &[String],
     ttl_seconds: Option<i64>,
+    writable: bool,
     created_by: Option<&str>,
 ) -> Result<String, AppError> {
     let vault_key = vault::resolve_vault_key_via_master(db, vault_id, master_key).await?;
-    mint(db, vault_id, &vault_key, master_key, display_name, allowed_paths, allowed_ips, ttl_seconds, created_by).await
+    mint(db, vault_id, &vault_key, master_key, display_name, allowed_paths, allowed_ips, ttl_seconds, writable, created_by).await
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -102,6 +106,7 @@ async fn mint(
     allowed_paths: &[String],
     allowed_ips: &[String],
     ttl_seconds: Option<i64>,
+    writable: bool,
     created_by: Option<&str>,
 ) -> Result<String, AppError> {
     let token_key = Zeroizing::new(crypto::random_key());
@@ -124,8 +129,8 @@ async fn mint(
         "INSERT INTO api_tokens \
          (id, vault_id, token_hash, display_name, vault_key_enc, vault_key_nonce, \
           token_key_enc, token_key_nonce, allowed_paths, allowed_ips, expires_at, \
-          renewable, renew_period, created_by) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          renewable, renew_period, writable, created_by) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(Uuid::new_v4().to_string())
     .bind(vault_id)
@@ -140,6 +145,7 @@ async fn mint(
     .bind(expires_at)
     .bind(renewable)
     .bind(ttl_seconds)
+    .bind(writable)
     .bind(created_by)
     .execute(db)
     .await?;
@@ -159,9 +165,9 @@ pub async fn authenticate_token(
     raw_token: &str,
 ) -> Result<TokenAuth, AppError> {
     let token_hash = crypto::sha256_hex(raw_token.as_bytes());
-    let row = sqlx::query_as::<_, (String, String, Option<String>, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, String, String, Option<DateTime<Utc>>, bool)>(
+    let row = sqlx::query_as::<_, (String, String, Option<String>, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, String, String, Option<DateTime<Utc>>, bool, bool)>(
         "SELECT id, vault_id, created_by, vault_key_enc, vault_key_nonce, token_key_enc, \
-         token_key_nonce, allowed_paths, allowed_ips, expires_at, revoked \
+         token_key_nonce, allowed_paths, allowed_ips, expires_at, revoked, writable \
          FROM api_tokens WHERE token_hash = ?",
     )
     .bind(&token_hash)
@@ -169,7 +175,7 @@ pub async fn authenticate_token(
     .await?
     .ok_or(AppError::Forbidden)?;
 
-    let (token_id, vault_id, created_by, vk_enc, vk_nonce, tk_enc, tk_nonce, paths_json, ips_json, expires_at, revoked) = row;
+    let (token_id, vault_id, created_by, vk_enc, vk_nonce, tk_enc, tk_nonce, paths_json, ips_json, expires_at, revoked, writable) = row;
     if revoked {
         return Err(AppError::Forbidden);
     }
@@ -192,7 +198,7 @@ pub async fn authenticate_token(
         .execute(db)
         .await;
 
-    Ok(TokenAuth { token_id, vault_id, created_by, allowed_paths, allowed_ips, vault_key })
+    Ok(TokenAuth { token_id, vault_id, created_by, allowed_paths, allowed_ips, writable, vault_key })
 }
 
 /// Token metadata for the `/v1/auth/token/*` self endpoints (no key material).
@@ -312,7 +318,7 @@ pub async fn renew(db: &sqlx::SqlitePool, raw_token: &str, increment: Option<i64
 // ─────────────────────────────────────────────────────────────────────────────
 pub async fn list_for_vault(db: &sqlx::SqlitePool, vault_id: &str) -> Result<Vec<TokenListing>, AppError> {
     let rows = sqlx::query_as::<_, TokenListing>(
-        "SELECT id, display_name, allowed_paths, allowed_ips, expires_at, last_used_at, revoked, created_at \
+        "SELECT id, display_name, allowed_paths, allowed_ips, writable, expires_at, last_used_at, revoked, created_at \
          FROM api_tokens WHERE vault_id = ? ORDER BY created_at DESC",
     )
     .bind(vault_id)

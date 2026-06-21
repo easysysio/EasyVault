@@ -407,6 +407,9 @@ pub struct TokenForm {
     pub allowed_ips: String,
     #[serde(default)]
     pub ttl_hours: String,
+    /// "rw" (read-write, default) or "ro" (read-only).
+    #[serde(default)]
+    pub access: String,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -943,8 +946,9 @@ async fn tokens_create(
         },
     };
 
+    let writable = form.access.trim() != "ro";
     let mk = master_key(&state).await?;
-    match tokens::create_token(&state.db, &vault_id, &keys.user_id, &keys.private_key, &mk, &form.display_name, &paths, &ips, ttl_seconds).await {
+    match tokens::create_token(&state.db, &vault_id, &keys.user_id, &keys.private_key, &mk, &form.display_name, &paths, &ips, ttl_seconds, writable).await {
         Ok(raw) => Ok(Html(pages::token_created_page(&keys.username, &vault_id, &v.name, &raw)).into_response()),
         Err(AppError::Forbidden) => Ok(access_denied(&keys)),
         Err(AppError::BadRequest(msg)) => {
@@ -983,6 +987,9 @@ pub struct ApproleForm {
     pub allowed_ips: String,
     #[serde(default)]
     pub ttl_hours: String,
+    /// "rw" (read-write, default) or "ro" (read-only).
+    #[serde(default)]
+    pub access: String,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1026,7 +1033,8 @@ async fn approles_create(
         "" => None,
         h => h.parse::<i64>().ok().filter(|n| *n > 0).map(|n| n * 3600),
     };
-    match approle::create_role(&state.db, &vault_id, &form.name, &paths, &ips, ttl, &keys.user_id).await {
+    let writable = form.access.trim() != "ro";
+    match approle::create_role(&state.db, &vault_id, &form.name, &paths, &ips, ttl, writable, &keys.user_id).await {
         Ok(_) => Ok(Redirect::to(&format!("/gui/vaults/{vault_id}/approles")).into_response()),
         Err(AppError::BadRequest(msg)) => {
             let roles = approle::list_for_vault(&state.db, &vault_id).await?;

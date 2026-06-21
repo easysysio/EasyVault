@@ -205,6 +205,10 @@ pub async fn write(
         Ok(c) => c,
         Err(resp) => return Ok(resp),
     };
+    if !ctx.auth.writable {
+        audit_ok(&state, &ctx, "WRITE", &path, 403).await;
+        return Err(AppError::Forbidden);
+    }
     let creator = ctx.auth.created_by.as_deref().ok_or_else(|| AppError::Internal("token has no owner".into()))?;
     let max_reads = body.options.and_then(|o| o.max_reads);
     let version = secrets::write(&state.db, &ctx.auth.vault_id, &path, &body.data, &ctx.auth.vault_key, creator, max_reads).await?;
@@ -226,6 +230,10 @@ pub async fn delete(
         Ok(c) => c,
         Err(resp) => return Ok(resp),
     };
+    if !ctx.auth.writable {
+        audit_ok(&state, &ctx, "DELETE", &path, 403).await;
+        return Err(AppError::Forbidden);
+    }
     secrets::soft_delete(&state.db, &ctx.auth.vault_id, &path).await?;
     audit_ok(&state, &ctx, "DELETE", &path, 204).await;
     Ok(StatusCode::NO_CONTENT.into_response())

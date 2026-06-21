@@ -5,6 +5,14 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — read-only tokens & AppRoles
+- Tokens and AppRoles can be created **read-only** or **read-write** (Access
+  selector on the create forms). A read-only credential can fetch secrets within
+  its path/IP ACL but **cannot write or delete** them (`POST`/`DELETE` → 403).
+  The token list shows the access mode. Existing tokens stay read-write
+  (migration 007 adds `writable`, default true). This is the one capability the
+  (deliberately dropped) policy engine would have added — without the machinery.
+
 ### Added — audit-log retention (master only)
 - The master can set an **audit-log retention window** (days; 0/blank = keep
   forever) on the audit page, with a **Prune now** button. A background task

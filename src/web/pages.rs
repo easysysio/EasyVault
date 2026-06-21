@@ -641,10 +641,10 @@ pub fn tokens_page(
     let err = error.map(|e| format!("<div class=\"err\">{}</div>", escape(e))).unwrap_or_default();
 
     let mut rows = String::from(
-        "<table><tr><th>Name</th><th>Paths</th><th>IPs</th><th>Expires</th><th>Last used</th><th>State</th><th></th></tr>",
+        "<table><tr><th>Name</th><th>Paths</th><th>IPs</th><th>Access</th><th>Expires</th><th>Last used</th><th>State</th><th></th></tr>",
     );
     if tokens.is_empty() {
-        rows.push_str("<tr><td colspan=\"7\" class=\"muted\">No tokens yet.</td></tr>");
+        rows.push_str("<tr><td colspan=\"8\" class=\"muted\">No tokens yet.</td></tr>");
     }
     for t in tokens {
         let state = if t.revoked {
@@ -662,12 +662,14 @@ pub fn tokens_page(
         } else {
             String::new()
         };
+        let access = if t.writable { "read-write" } else { "<span class=\"pill warn\">read-only</span>" };
         rows.push_str(&format!(
             "<tr><td>{name}</td><td class=\"muted\">{paths}</td><td class=\"muted\">{ips}</td>\
-             <td class=\"muted\">{exp}</td><td class=\"muted\">{used}</td><td>{state}</td><td>{revoke}</td></tr>",
+             <td class=\"muted\">{access}</td><td class=\"muted\">{exp}</td><td class=\"muted\">{used}</td><td>{state}</td><td>{revoke}</td></tr>",
             name = escape(t.display_name.as_deref().unwrap_or("—")),
             paths = escape(&t.allowed_paths),
             ips = escape(if t.allowed_ips == "[]" { "any" } else { &t.allowed_ips }),
+            access = access,
             exp = escape(t.expires_at.as_deref().unwrap_or("never")),
             used = escape(t.last_used_at.as_deref().unwrap_or("—")),
             state = state,
@@ -688,6 +690,10 @@ pub fn tokens_page(
              <textarea name=\"allowed_ips\" rows=\"2\" style=\"width:100%;font-family:ui-monospace,monospace;\
              padding:10px;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--fg)\"></textarea>\
              <label>TTL (hours, blank = never expires)</label><input name=\"ttl_hours\" type=\"number\" min=\"1\">\
+             <label>Access</label>\
+             <select name=\"access\" style=\"padding:10px 12px;border:1px solid var(--border);border-radius:7px;\
+             background:var(--bg);color:var(--fg)\">\
+             <option value=\"rw\">read-write</option><option value=\"ro\">read-only</option></select>\
              <button type=\"submit\">Create token</button></form></div>",
             vid = escape(vault_id)
         )
@@ -776,6 +782,10 @@ pub fn approles_page(
          <textarea name=\"allowed_ips\" rows=\"2\" style=\"width:100%;font-family:ui-monospace,monospace;\
          padding:10px;border:1px solid var(--border);border-radius:7px;background:var(--bg);color:var(--fg)\"></textarea>\
          <label>Token TTL (hours, blank = never expires)</label><input name=\"ttl_hours\" type=\"number\" min=\"1\">\
+         <label>Access</label>\
+         <select name=\"access\" style=\"padding:10px 12px;border:1px solid var(--border);border-radius:7px;\
+         background:var(--bg);color:var(--fg)\">\
+         <option value=\"rw\">read-write</option><option value=\"ro\">read-only</option></select>\
          <button type=\"submit\">Create role</button></form></div>",
         vid = escape(vault_id),
         name = escape(vault_name),

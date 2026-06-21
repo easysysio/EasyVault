@@ -119,7 +119,7 @@ async fn token_create_authenticate_revoke() {
     let vkey = vault::resolve_vault_key(&db, &vid, &ed_id, &ed_priv).await.unwrap();
     secrets::write(&db, &vid, "db/pg", &json!({"p": "s3cret"}), &vkey, &ed_id, None).await.unwrap();
 
-    let raw = tokens::create_token(&db, &vid, &ed_id, &ed_priv, &master_key, "ci", &["db/*".into()], &[], None).await.unwrap();
+    let raw = tokens::create_token(&db, &vid, &ed_id, &ed_priv, &master_key, "ci", &["db/*".into()], &[], None, true).await.unwrap();
     assert!(raw.starts_with("ev."));
 
     // Authenticate the token and read through master_key -> token_key -> vault_key.
@@ -137,6 +137,34 @@ async fn token_create_authenticate_revoke() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// read-only tokens carry writable=false; read-write carry writable=true
+// ─────────────────────────────────────────────────────────────────────────────
+#[tokio::test]
+async fn token_writable_flag() {
+    let db = test_pool().await;
+    let master_key = crypto::random_key();
+    let mid = users::create_user(&db, "m", "masterpass", true).await.unwrap();
+    users::create_user(&db, "ed", "edpassword", false).await.unwrap();
+    let vid = vault::create_vault(&db, "v", "", &mid, &master_key).await.unwrap();
+    vault::assign(&db, &vid, &master_key, "ed", Role::Editor, &mid).await.unwrap();
+    let ed_id = users::get_by_username(&db, "ed").await.unwrap().unwrap().id;
+    let ed_priv = private_key(&db, "ed", "edpassword").await;
+
+    let ro = tokens::create_token(&db, &vid, &ed_id, &ed_priv, &master_key, "ro", &["*".into()], &[], None, false).await.unwrap();
+    let rw = tokens::create_token(&db, &vid, &ed_id, &ed_priv, &master_key, "rw", &["*".into()], &[], None, true).await.unwrap();
+
+    assert!(!tokens::authenticate_token(&db, &master_key, &ro).await.unwrap().writable);
+    assert!(tokens::authenticate_token(&db, &master_key, &rw).await.unwrap().writable);
+
+    // AppRole carries the flag through to the minted token.
+    let role_id = approle::create_role(&db, &vid, "ci", &["*".into()], &[], None, false, &ed_id).await.unwrap();
+    let internal = approle::get_by_role_id(&db, &role_id).await.unwrap().unwrap().id;
+    let sid = approle::generate_secret_id(&db, &internal).await.unwrap();
+    let (token, _, _) = approle::login(&db, &master_key, &role_id, &sid).await.unwrap();
+    assert!(!tokens::authenticate_token(&db, &master_key, &token).await.unwrap().writable);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // token self-management: lookup-self / renew-self / revoke-self
 // ─────────────────────────────────────────────────────────────────────────────
 #[tokio::test]
@@ -151,7 +179,7 @@ async fn token_self_lookup_renew_revoke() {
     let ed_priv = private_key(&db, "ed", "edpassword").await;
 
     // A token WITH a TTL is renewable.
-    let raw = tokens::create_token(&db, &vid, &ed_id, &ed_priv, &master_key, "ci", &["*".into()], &[], Some(3600)).await.unwrap();
+    let raw = tokens::create_token(&db, &vid, &ed_id, &ed_priv, &master_key, "ci", &["*".into()], &[], Some(3600), true).await.unwrap();
     let info = tokens::lookup(&db, &raw).await.unwrap();
     assert!(info.renewable);
     assert!(info.ttl_seconds() > 3500 && info.ttl_seconds() <= 3600);
@@ -166,7 +194,7 @@ async fn token_self_lookup_renew_revoke() {
     assert!(tokens::authenticate_token(&db, &master_key, &raw).await.is_err());
 
     // A token WITHOUT a TTL is not renewable.
-    let perm = tokens::create_token(&db, &vid, &ed_id, &ed_priv, &master_key, "perm", &["*".into()], &[], None).await.unwrap();
+    let perm = tokens::create_token(&db, &vid, &ed_id, &ed_priv, &master_key, "perm", &["*".into()], &[], None, true).await.unwrap();
     assert!(!tokens::lookup(&db, &perm).await.unwrap().renewable);
     assert!(tokens::renew(&db, &perm, None).await.is_err());
 }
@@ -186,7 +214,7 @@ async fn rotation_preserves_access() {
     let ed_priv = private_key(&db, "ed", "edpassword").await;
     let vkey = vault::resolve_vault_key(&db, &vid, &ed_id, &ed_priv).await.unwrap();
     secrets::write(&db, &vid, "k", &json!({"v": "x"}), &vkey, &ed_id, None).await.unwrap();
-    let raw = tokens::create_token(&db, &vid, &ed_id, &ed_priv, &master_key, "t", &["*".into()], &[], None).await.unwrap();
+    let raw = tokens::create_token(&db, &vid, &ed_id, &ed_priv, &master_key, "t", &["*".into()], &[], None, true).await.unwrap();
 
     vault::rotate_vault(&db, &vid, &master_key).await.unwrap();
 
@@ -319,7 +347,7 @@ async fn approle_login_mints_scoped_token() {
     let vkey = vault::resolve_vault_key(&db, &vid, &ed_id, &ed_priv).await.unwrap();
     secrets::write(&db, &vid, "db/pg", &json!({"password": "hunter2"}), &vkey, &ed_id, None).await.unwrap();
 
-    let role_id = approle::create_role(&db, &vid, "ci", &["db/*".into()], &[], Some(3600), &ed_id).await.unwrap();
+    let role_id = approle::create_role(&db, &vid, "ci", &["db/*".into()], &[], Some(3600), true, &ed_id).await.unwrap();
     let internal = approle::get_by_role_id(&db, &role_id).await.unwrap().unwrap().id;
     let secret_id = approle::generate_secret_id(&db, &internal).await.unwrap();
 
