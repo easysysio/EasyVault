@@ -5,6 +5,19 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added — confirmation prompts on destructive actions
+- Revoking a token, revoking a member's vault access, disabling a user,
+  deleting an AppRole, and rotating a vault key now show a confirmation dialog
+  before they fire — matching the existing prompts on "Seal instance" and
+  "Delete secret". Prevents accidental, hard-to-undo clicks.
+
+### Fixed — mobile layout
+- Added responsive styling for narrow screens (≤560px): the two-column info
+  grid collapses to one column, cards and the header tighten their padding, and
+  the floating version label moves inline so it no longer overlaps content. The
+  inline "assign member" and "audit retention" forms now wrap instead of
+  overflowing. (Wide tables already scroll horizontally as of the previous fix.)
+
 ### Changed — clean build (no warnings)
 - Removed dead struct fields that the compiler flagged as never read
   (`SealView.shares`, `ApproleRow.role_id`, the unused `created_at` on the

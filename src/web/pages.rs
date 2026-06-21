@@ -83,7 +83,14 @@ pre{background:var(--bg);border:1px solid var(--border);border-radius:8px;color:
 code{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-size:13px}\
 .themetoggle{font-size:16px;line-height:1;cursor:pointer}\
 .version{position:fixed;bottom:8px;right:12px;font-size:12px;color:var(--muted);opacity:.65}\
-.version a{color:var(--muted)}";
+.version a{color:var(--muted)}\
+@media(max-width:560px){\
+main{margin:24px auto;padding:0 14px}\
+.card{padding:18px}\
+.grid{grid-template-columns:1fr}\
+header{padding:12px 16px}\
+.version{position:static;display:block;text-align:right;margin:18px 14px 10px;opacity:.6}\
+}";
 
 /// Inline head script: apply the saved/OS theme before paint (no flash) and a
 /// toggle handler. Kept tiny and dependency-free.
@@ -320,7 +327,8 @@ pub fn users_page(username: &str, current_user_id: &str, users: &[crate::users::
             String::new()
         } else if u.active {
             format!(
-                "<form method=\"post\" action=\"/gui/users/{id}/disable\" style=\"margin:0\">\
+                "<form method=\"post\" action=\"/gui/users/{id}/disable\" style=\"margin:0\" \
+                 onsubmit=\"return confirm('Disable this user? They are signed out and cannot log in.');\">\
                  <button class=\"link\" type=\"submit\">disable</button></form>",
                 id = escape(&u.id)
             )
@@ -508,7 +516,8 @@ pub fn vault_settings_page(s: VaultSettings<'_>) -> String {
     for m in s.members {
         let revoke = if m.user_id != s.current_user_id {
             format!(
-                "<form method=\"post\" action=\"/gui/vaults/{vid}/revoke\" style=\"margin:0\">\
+                "<form method=\"post\" action=\"/gui/vaults/{vid}/revoke\" style=\"margin:0\" \
+                 onsubmit=\"return confirm('Revoke this member from the vault?');\">\
                  <input type=\"hidden\" name=\"user_id\" value=\"{uid}\">\
                  <button class=\"link\" type=\"submit\">revoke</button></form>",
                 vid = escape(s.vault_id),
@@ -529,8 +538,8 @@ pub fn vault_settings_page(s: VaultSettings<'_>) -> String {
 
     let assign_form = format!(
         "<form method=\"post\" action=\"/gui/vaults/{vid}/assign\" \
-         style=\"display:flex;gap:8px;align-items:flex-end;margin-top:8px\">\
-         <div style=\"flex:1\"><label style=\"margin-top:0\">Assign username</label>\
+         style=\"display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-top:8px\">\
+         <div style=\"flex:1;min-width:160px\"><label style=\"margin-top:0\">Assign username</label>\
          <input name=\"username\" required></div>\
          <div><label style=\"margin-top:0\">Role</label>\
          <select name=\"role\" style=\"padding:10px 12px;border:1px solid var(--border);border-radius:7px;\
@@ -549,7 +558,8 @@ pub fn vault_settings_page(s: VaultSettings<'_>) -> String {
          <div class=\"card\"><h2>Key rotation</h2>\
          <p class=\"muted\">Generate a new vault key, re-encrypt every secret, and re-wrap the key for \
          all members and live tokens.</p>\
-         <form method=\"post\" action=\"/gui/vaults/{vid}/rotate\">\
+         <form method=\"post\" action=\"/gui/vaults/{vid}/rotate\" \
+         onsubmit=\"return confirm('Rotate the vault key? Every secret is re-encrypted under a new key.');\">\
          <button type=\"submit\" class=\"btn-neutral\">Rotate vault key</button></form></div>",
         vid = escape(s.vault_id),
         name = escape(s.vault_name),
@@ -604,7 +614,7 @@ pub fn audit_page(username: &str, rows: &[crate::audit::AuditRow], verified: &[b
          <p class=\"muted\">{total} events total — currently {retention}. Each row is HMAC-signed \
          with a key derived from the master key.</p>\
          <form method=\"post\" action=\"/gui/audit/retention\" \
-         style=\"display:flex;gap:8px;align-items:flex-end\">\
+         style=\"display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end\">\
          <div><label style=\"margin-top:0\">Retention (days, blank/0 = keep forever)</label>\
          <input name=\"days\" type=\"number\" min=\"0\" value=\"{rvalue}\" placeholder=\"forever\" \
          style=\"width:180px\"></div>\
@@ -658,7 +668,8 @@ pub fn tokens_page(
         };
         let revoke = if can_create && !t.revoked {
             format!(
-                "<form method=\"post\" action=\"/gui/vaults/{vid}/tokens/{tid}/revoke\" style=\"margin:0\">\
+                "<form method=\"post\" action=\"/gui/vaults/{vid}/tokens/{tid}/revoke\" style=\"margin:0\" \
+                 onsubmit=\"return confirm('Revoke this token? Clients using it lose access immediately.');\">\
                  <button class=\"link\" type=\"submit\">revoke</button></form>",
                 vid = escape(vault_id),
                 tid = escape(&t.id),
@@ -759,7 +770,8 @@ pub fn approles_page(
              <td class=\"muted\">{paths}</td><td class=\"muted\">{ttl}</td><td>\
              <form method=\"post\" action=\"/gui/vaults/{vid}/approles/{id}/secret-id\" style=\"display:inline;margin:0\">\
              <button class=\"link\" type=\"submit\">+ secret-id</button></form> &nbsp;\
-             <form method=\"post\" action=\"/gui/vaults/{vid}/approles/{id}/delete\" style=\"display:inline;margin:0\">\
+             <form method=\"post\" action=\"/gui/vaults/{vid}/approles/{id}/delete\" style=\"display:inline;margin:0\" \
+             onsubmit=\"return confirm('Delete this AppRole? Services using it can no longer log in.');\">\
              <button class=\"link\" type=\"submit\">delete</button></form></td></tr>",
             name = escape(&r.name),
             rid = escape(&r.role_id),
