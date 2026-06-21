@@ -7,7 +7,7 @@
 // =============================================================================
 
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use axum::Router;
 use axum::extract::{ConnectInfo, Form, Path, Query, State};
@@ -114,6 +114,8 @@ pub struct Credentials {
 // ─────────────────────────────────────────────────────────────────────────────
 pub fn routes() -> Router<Arc<AppState>> {
     Router::new()
+        .route("/favicon.ico", get(favicon_ico))
+        .route("/favicon.svg", get(favicon_svg))
         .route("/gui", get(gui_root))
         .route("/gui/", get(gui_root))
         .route("/gui/unseal", get(unseal_form).post(unseal_submit))
@@ -144,6 +146,100 @@ pub fn routes() -> Router<Arc<AppState>> {
         .route("/gui/vaults/{id}/approles", get(approles_list).post(approles_create))
         .route("/gui/vaults/{id}/approles/{rid}/secret-id", post(approle_secret_id))
         .route("/gui/vaults/{id}/approles/{rid}/delete", post(approle_delete))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Favicon
+// EasyVault ships its own brand-green "keyhole" icon. The crisp SVG is the
+// primary asset; a generated 32×32 .ico covers legacy /favicon.ico probes.
+// Both are built once and served unauthenticated.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Vault keyhole in brand green (#238636). Rounded square + white keyhole.
+const FAVICON_SVG: &str = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\">\
+<rect width=\"32\" height=\"32\" rx=\"7\" fill=\"#238636\"/>\
+<circle cx=\"16\" cy=\"13\" r=\"5\" fill=\"#ffffff\"/>\
+<path d=\"M13.4 13h5.2l1 11h-7.2z\" fill=\"#ffffff\"/></svg>";
+
+/// 32×32 32-bit `.ico`, generated once at first request.
+static FAVICON_ICO: LazyLock<Vec<u8>> = LazyLock::new(build_favicon_ico);
+
+// Build a valid single-image 32×32 32-bit ICO with the keyhole glyph drawn
+// procedurally (no image tooling required at build time).
+fn build_favicon_ico() -> Vec<u8> {
+    const N: i32 = 32;
+    let bg = [0x36u8, 0x86, 0x23, 0xFF]; // #238636 as B,G,R,A
+    let fg = [0xFFu8, 0xFF, 0xFF, 0xFF]; // white keyhole
+
+    // XOR pixel array — BMP rows are stored bottom-up.
+    let mut xor = Vec::with_capacity((N * N * 4) as usize);
+    for row in (0..N).rev() {
+        let ly = N - 1 - row; // logical top-down row
+        for x in 0..N {
+            let dx = x - 16;
+            let dy = ly - 13;
+            let in_circle = dx * dx + dy * dy <= 25; // r = 5
+            let in_slot = x >= 14 && x <= 18 && ly >= 13 && ly <= 24;
+            xor.extend_from_slice(if in_circle || in_slot { &fg } else { &bg });
+        }
+    }
+    // AND mask — fully opaque (alpha carries transparency), 4 bytes/row.
+    let and = vec![0u8; (N * 4) as usize];
+
+    let mut out = Vec::new();
+    // ICONDIR
+    out.extend_from_slice(&0u16.to_le_bytes()); // reserved
+    out.extend_from_slice(&1u16.to_le_bytes()); // type: icon
+    out.extend_from_slice(&1u16.to_le_bytes()); // image count
+    // ICONDIRENTRY
+    out.push(N as u8); // width
+    out.push(N as u8); // height
+    out.push(0); // palette colors
+    out.push(0); // reserved
+    out.extend_from_slice(&1u16.to_le_bytes()); // color planes
+    out.extend_from_slice(&32u16.to_le_bytes()); // bits per pixel
+    let bytes_in_res = 40 + xor.len() + and.len();
+    out.extend_from_slice(&(bytes_in_res as u32).to_le_bytes());
+    out.extend_from_slice(&22u32.to_le_bytes()); // pixel-data offset
+    // BITMAPINFOHEADER
+    out.extend_from_slice(&40u32.to_le_bytes()); // header size
+    out.extend_from_slice(&N.to_le_bytes()); // width
+    out.extend_from_slice(&(N * 2).to_le_bytes()); // height (XOR + AND)
+    out.extend_from_slice(&1u16.to_le_bytes()); // planes
+    out.extend_from_slice(&32u16.to_le_bytes()); // bpp
+    out.extend_from_slice(&0u32.to_le_bytes()); // compression: BI_RGB
+    out.extend_from_slice(&0u32.to_le_bytes()); // image size
+    out.extend_from_slice(&0i32.to_le_bytes()); // x ppm
+    out.extend_from_slice(&0i32.to_le_bytes()); // y ppm
+    out.extend_from_slice(&0u32.to_le_bytes()); // colors used
+    out.extend_from_slice(&0u32.to_le_bytes()); // important colors
+    out.extend_from_slice(&xor);
+    out.extend_from_slice(&and);
+    out
+}
+
+// GET /favicon.svg — crisp scalable icon, preferred by modern browsers.
+async fn favicon_svg() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "image/svg+xml"),
+            (header::CACHE_CONTROL, "public, max-age=86400"),
+        ],
+        FAVICON_SVG,
+    )
+        .into_response()
+}
+
+// GET /favicon.ico — legacy fallback for the browser's default probe.
+async fn favicon_ico() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "image/x-icon"),
+            (header::CACHE_CONTROL, "public, max-age=86400"),
+        ],
+        FAVICON_ICO.clone(),
+    )
+        .into_response()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

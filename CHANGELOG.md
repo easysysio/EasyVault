@@ -3,6 +3,15 @@
 All notable changes to EasyVault are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added — favicon
+- The GUI now ships its own brand-green "keyhole" favicon. A crisp scalable
+  `/favicon.svg` is the primary icon for modern browsers, with a generated
+  32×32 `/favicon.ico` (built in-process — no image tooling at build time) as
+  the legacy fallback for the browser's default probe. Both are served
+  unauthenticated and cached for a day.
+
 ## [0.1.6] — 2026-06-21
 
 ### Added — read-only tokens & AppRoles
