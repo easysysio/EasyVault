@@ -5,6 +5,12 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed — wide tables overflowing their card
+- On narrow viewports the audit log's 8-column table (and other wide tables such
+  as Tokens) spilled past the right edge of its card — the last column
+  ("Integrity") ended up rendered outside the box. Cards now scroll horizontally
+  instead of overflowing, keeping every column inside the frame.
+
 ### Added — favicon
 - The GUI now ships its own brand-green "keyhole" favicon. A crisp scalable
   `/favicon.svg` is the primary icon for modern browsers, with a generated

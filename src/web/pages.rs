@@ -52,7 +52,7 @@ header .brand{font-weight:700;letter-spacing:.3px}\
 header .brand span{color:var(--brand)}\
 header .right{display:flex;align-items:center;gap:14px}\
 main{max-width:880px;margin:40px auto;padding:0 22px}\
-.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:24px;margin-bottom:20px}\
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:24px;margin-bottom:20px;overflow-x:auto}\
 h1{font-size:22px;margin:0 0 6px}\
 h2{font-size:16px;margin:0 0 14px;color:var(--h2)}\
 label{display:block;margin:14px 0 6px;font-size:13px;color:var(--h2)}\
