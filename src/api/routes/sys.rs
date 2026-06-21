@@ -32,7 +32,6 @@ const UNSEAL_VERIFICATION: &[u8] = b"easyvault-unseal-verification-v1";
 /// Snapshot of the system_init row relevant to sealing.
 struct InitRow {
     initialized: bool,
-    sealed: bool,
     master_key_enc: Option<Vec<u8>>,
     master_key_nonce: Option<Vec<u8>>,
     key_shares: Option<i64>,
@@ -45,17 +44,16 @@ struct InitRow {
 // when the row is absent.
 // ─────────────────────────────────────────────────────────────────────────────
 async fn load_init_row(db: &sqlx::SqlitePool) -> Result<InitRow, AppError> {
-    let row = sqlx::query_as::<_, (bool, bool, Option<Vec<u8>>, Option<Vec<u8>>, Option<i64>, Option<i64>)>(
-        "SELECT initialized, sealed, master_key_enc, master_key_nonce, key_shares, key_threshold \
+    let row = sqlx::query_as::<_, (bool, Option<Vec<u8>>, Option<Vec<u8>>, Option<i64>, Option<i64>)>(
+        "SELECT initialized, master_key_enc, master_key_nonce, key_shares, key_threshold \
          FROM system_init WHERE id = 1",
     )
     .fetch_optional(db)
     .await?;
 
     Ok(match row {
-        Some((initialized, sealed, enc, nonce, shares, threshold)) => InitRow {
+        Some((initialized, enc, nonce, shares, threshold)) => InitRow {
             initialized,
-            sealed,
             master_key_enc: enc,
             master_key_nonce: nonce,
             key_shares: shares,
@@ -63,7 +61,6 @@ async fn load_init_row(db: &sqlx::SqlitePool) -> Result<InitRow, AppError> {
         },
         None => InitRow {
             initialized: false,
-            sealed: true,
             master_key_enc: None,
             master_key_nonce: None,
             key_shares: None,
@@ -93,7 +90,6 @@ pub struct SealView {
     pub initialized: bool,
     pub sealed: bool,
     pub threshold: i64,
-    pub shares: i64,
     pub progress: usize,
 }
 
@@ -107,7 +103,6 @@ pub async fn seal_view(state: &Arc<AppState>) -> Result<SealView, AppError> {
         initialized: row.initialized,
         sealed: state.is_sealed().await,
         threshold: row.key_threshold.unwrap_or(0),
-        shares: row.key_shares.unwrap_or(0),
         progress: state.unseal_progress.read().await.len(),
     })
 }

@@ -17,7 +17,6 @@ use crate::error::AppError;
 pub struct SecretListing {
     pub path: String,
     pub version: i64,
-    pub created_at: String,
 }
 
 /// Metadata for a single stored version of a secret path.

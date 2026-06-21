@@ -61,11 +61,8 @@ impl Role {
 /// A vault row (metadata only — keys live escrowed/wrapped, never plaintext).
 #[derive(Debug, sqlx::FromRow)]
 pub struct VaultRow {
-    pub id: String,
     pub name: String,
     pub description: Option<String>,
-    pub locked: bool,
-    pub created_by: Option<String>,
 }
 
 /// Summary of a vault for list views.

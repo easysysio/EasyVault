@@ -21,7 +21,6 @@ pub struct ApproleRow {
     pub id: String,
     pub name: String,
     pub vault_id: String,
-    pub role_id: String,
     pub allowed_paths: String,
     pub allowed_ips: String,
     pub token_ttl: Option<i64>,
@@ -37,7 +36,6 @@ pub struct ApproleListing {
     pub role_id: String,
     pub allowed_paths: String,
     pub token_ttl: Option<i64>,
-    pub created_at: String,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

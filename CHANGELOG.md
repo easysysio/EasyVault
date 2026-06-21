@@ -5,6 +5,14 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed — clean build (no warnings)
+- Removed dead struct fields that the compiler flagged as never read
+  (`SealView.shares`, `ApproleRow.role_id`, the unused `created_at` on the
+  AppRole/secret/token listing rows, and `VaultRow.id/locked/created_by`). The
+  `[audit]` config block is retained and annotated — it is parsed for
+  forward-compatibility (EasyLog sink, raw-value logging) but not yet enforced.
+  The build is now warning-free.
+
 ### Fixed — wide tables overflowing their card
 - On narrow viewports the audit log's 8-column table (and other wide tables such
   as Tokens) spilled past the right edge of its card — the last column

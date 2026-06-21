@@ -17,7 +17,11 @@ pub struct Config {
     pub storage: StorageConfig,
     #[serde(default)]
     pub security: SecurityConfig,
+    // Parsed from `[audit]` for forward-compatibility (EasyLog sink, raw-value
+    // logging) but not yet enforced — retention is configured at runtime via the
+    // settings table. Kept so an existing `[audit]` block stays valid.
     #[serde(default)]
+    #[allow(dead_code)]
     pub audit: AuditConfig,
     #[serde(default)]
     pub init: InitConfig,

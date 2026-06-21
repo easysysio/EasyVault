@@ -32,7 +32,6 @@ pub struct TokenListing {
     pub expires_at: Option<String>,
     pub last_used_at: Option<String>,
     pub revoked: bool,
-    pub created_at: String,
 }
 
 /// Resolved token context after authentication (Flow 8), incl. the vault key.
