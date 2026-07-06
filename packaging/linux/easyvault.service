@@ -1,6 +1,6 @@
 [Unit]
 Description=EasyVault — self-hosted secrets manager
-Documentation=https://github.com/yarivha/EasyVault
+Documentation=https://github.com/easysysio/EasyVault
 After=network.target
 StartLimitIntervalSec=60s
 StartLimitBurst=3

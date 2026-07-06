@@ -4,7 +4,7 @@ version = "0.1.6"
 edition = "2024"
 description = "Self-hosted, Vault-compatible secrets manager with envelope encryption"
 license = "MIT"
-repository = "https://github.com/yarivha/EasyVault"
+repository = "https://github.com/easysysio/EasyVault"
 
 [dependencies]
 # Web / async runtime

@@ -15,7 +15,7 @@ priority: optional
 maintainer: "yarivha <yariv.hakim@gmail.com>"
 description: "Self-hosted, HashiCorp Vault-compatible secrets manager with envelope encryption."
 vendor: "EasyVault"
-homepage: "https://github.com/yarivha/EasyVault"
+homepage: "https://github.com/easysysio/EasyVault"
 license: "MIT"
 
 contents:

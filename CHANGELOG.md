@@ -5,6 +5,12 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed — GitHub repository moved
+- The project now lives at **https://github.com/easysysio/EasyVault** (moved
+  from `yarivha/EasyVault`). Updated the Cargo `repository` field, the nfpm
+  package `homepage`, the systemd/Windows service documentation URLs, and the
+  release-tag links here. Authorship is unchanged (still maintained by yarivha).
+
 ### Added — confirmation prompts on destructive actions
 - Revoking a token, revoking a member's vault access, disabling a user,
   deleting an AppRole, and rotating a vault key now show a confirmation dialog
@@ -366,10 +372,10 @@ HMAC audit log, vault-key rotation, TLS, and a fully browser-based bootstrap.
   secret read/write → API-token REST access → IP ACL → audit + tamper detection
   → key rotation, over both HTTP and TLS.
 
-[0.1.6]: https://github.com/yarivha/EasyVault/releases/tag/v0.1.6
-[0.1.5]: https://github.com/yarivha/EasyVault/releases/tag/v0.1.5
-[0.1.4]: https://github.com/yarivha/EasyVault/releases/tag/v0.1.4
-[0.1.3]: https://github.com/yarivha/EasyVault/releases/tag/v0.1.3
-[0.1.2]: https://github.com/yarivha/EasyVault/releases/tag/v0.1.2
-[0.1.1]: https://github.com/yarivha/EasyVault/releases/tag/v0.1.1
-[0.1.0]: https://github.com/yarivha/EasyVault/releases/tag/v0.1.0
+[0.1.6]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.6
+[0.1.5]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.5
+[0.1.4]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.4
+[0.1.3]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.3
+[0.1.2]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.2
+[0.1.1]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.1
+[0.1.0]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.0

@@ -1,7 +1,7 @@
 <service>
   <id>EasyVault</id>
   <name>EasyVault</name>
-  <description>EasyVault — self-hosted secrets manager (https://github.com/yarivha/EasyVault)</description>
+  <description>EasyVault — self-hosted secrets manager (https://github.com/easysysio/EasyVault)</description>
 
   <!-- %BASE% is the directory containing this wrapper (the install dir). -->
   <executable>%BASE%\easyvault.exe</executable>
