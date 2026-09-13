@@ -8,6 +8,8 @@ sealed with envelope encryption: each vault has its own key, distributed
 per-user via X25519 ECDH, and the master key lives only in memory (unseal with
 Shamir shares). See [`CLAUDE.md`](CLAUDE.md) for the full design.
 
+📖 **Documentation: [easyvault.easysys.io](https://easyvault.easysys.io)**
+
 > **Status:** early development. v0.1.0 boots **sealed** and supports the
 > init / unseal lifecycle. Users, vaults, KV secrets, and API tokens are next.
 > See [`CHANGELOG.md`](CHANGELOG.md).
