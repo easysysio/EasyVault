@@ -1,0 +1,260 @@
+/* ==========================================================================
+   EasyVault site: the product layer over easysys.css
+   Landing components added here are prefixed `ev-`. The rest themes the
+   documentation pages (Material's own chrome) with the EasySYS tokens, so the
+   landing page and the docs read as one site. Same structure as EasyLog's
+   easylog.css, so the product sites stay in step.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Landing: Material's footer would repeat what .es-footer already says
+   -------------------------------------------------------------------------- */
+
+body:has(.es-home) .md-footer {
+  display: none;
+}
+
+/* --------------------------------------------------------------------------
+   Landing: GUI screenshots and the feature grid
+   -------------------------------------------------------------------------- */
+
+.ev-showcase {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.ev-shot {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid var(--es-border);
+  background: #0b0f19;
+  padding: 28px 0 0 28px;
+  box-shadow: var(--es-shadow);
+}
+
+.ev-shot::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 20% 0%, rgba(44, 123, 224, 0.35), transparent 60%);
+}
+
+.md-typeset .ev-shot img {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: none;
+  border-radius: 10px 0 0 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-right: 0;
+  border-bottom: 0;
+}
+
+.ev-features {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.ev-feature {
+  padding: 28px;
+}
+
+.ev-feature .es-icon {
+  margin-bottom: 18px;
+}
+
+.es-home .ev-feature-title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--es-fg);
+  margin-bottom: 6px;
+}
+
+.es-home .ev-feature-text {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--es-fg-4);
+}
+
+/* Architecture: the stages drawn inside the EasyVault box */
+.es-diagram .a-box rect {
+  fill: var(--es-card);
+  stroke: var(--es-border-strong);
+}
+
+.es-diagram .a-box .a-title {
+  font-size: 15px;
+}
+
+.es-home .ev-small {
+  margin-top: 4px;
+  max-width: 300px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--es-fg-4);
+}
+
+@media screen and (max-width: 1100px) {
+  .ev-showcase { grid-template-columns: minmax(0, 1fr); }
+  .ev-features { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media screen and (max-width: 760px) {
+  .ev-features { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .ev-feature { padding: 24px; }
+  .ev-shot { padding: 18px 0 0 18px; }
+}
+
+/* ==========================================================================
+   Documentation pages
+   Scoped with body:not(:has(.es-home)) wherever a rule could reach the landing
+   page's own headings and margins.
+   ========================================================================== */
+
+[data-md-color-scheme] {
+  --md-default-bg-color: var(--es-bg);
+  --md-typeset-a-color: var(--es-accent-text);
+}
+
+/* Header and tabs: the easysys.io navbar look, light on light and dark on dark */
+.md-header,
+.md-tabs {
+  background-color: var(--es-bg);
+  color: var(--es-fg);
+}
+
+.md-header {
+  box-shadow: 0 1px 0 var(--es-border);
+}
+
+.md-header--shadow {
+  box-shadow: 0 1px 0 var(--es-border), 0 4px 16px rgba(15, 23, 42, 0.06);
+}
+
+.md-tabs {
+  border-bottom: 1px solid var(--es-border);
+}
+
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+  height: 1.8rem;
+  width: auto;
+}
+
+.md-header__title {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.md-tabs__link {
+  font-weight: 600;
+  opacity: 1;
+  color: var(--es-fg-4);
+}
+
+.md-tabs__item--active .md-tabs__link,
+.md-tabs__link:hover {
+  color: var(--es-accent-text);
+}
+
+.md-header .md-search__form {
+  background-color: var(--es-tag-bg);
+  border: 1px solid var(--es-border);
+  border-radius: 8px;
+}
+
+.md-header .md-search__input {
+  color: var(--es-fg);
+}
+
+.md-header .md-search__input::placeholder,
+.md-header .md-search__icon {
+  color: var(--es-fg-4);
+}
+
+.md-source {
+  color: var(--es-fg-3);
+}
+
+/* Headings: the gradient title and tight tracking of the landing page */
+body:not(:has(.es-home)) .md-typeset h1 {
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--es-fg);
+  background: var(--es-title-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+body:not(:has(.es-home)) .md-typeset h2 {
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  color: var(--es-fg);
+}
+
+body:not(:has(.es-home)) .md-typeset h3 {
+  font-weight: 700;
+  color: var(--es-fg);
+}
+
+/* Cards: admonitions, tables, tabs, code and figures share the card radius */
+.md-typeset .admonition,
+.md-typeset details {
+  border-width: 1px;
+  border-radius: 12px;
+  box-shadow: var(--es-shadow);
+}
+
+.md-typeset pre > code,
+.md-typeset .highlight pre {
+  border-radius: 10px;
+}
+
+.md-typeset .tabbed-set {
+  border-radius: 12px;
+}
+
+.md-typeset table:not([class]) {
+  border: 1px solid var(--es-border);
+  border-radius: 12px;
+  box-shadow: var(--es-shadow);
+}
+
+.md-typeset figure img {
+  border-radius: 12px;
+  border: 1px solid var(--es-border);
+  box-shadow: var(--es-shadow-hover);
+}
+
+.md-typeset hr {
+  border-bottom-color: var(--es-border);
+}
+
+.md-nav__link--active {
+  color: var(--es-accent-text);
+  font-weight: 600;
+}
+
+/* Footer: quiet, on the page ground, like .es-footer */
+.md-footer {
+  background-color: var(--es-bg-subtle);
+  color: var(--es-fg);
+  border-top: 1px solid var(--es-border);
+}
+
+.md-footer-meta {
+  background-color: var(--es-bg);
+  border-top: 1px solid var(--es-border);
+}
+
+.md-footer-meta,
+.md-footer-meta a,
+.md-copyright {
+  color: var(--es-fg-4);
+}
