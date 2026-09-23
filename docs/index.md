@@ -360,7 +360,7 @@ EOF
 <a href="https://easywaf.easysys.io">EasyWAF</a>
 <a href="https://easylog.easysys.io">EasyLog</a>
 <a href="https://easydc.easysys.io">EasyDC</a>
-<a href="https://www.easynas.org">EasyNAS</a>
+<a href="https://easynas.org">EasyNAS</a>
 </div>
 <div class="es-footer-col">
 <span class="es-footer-title">Community</span>
