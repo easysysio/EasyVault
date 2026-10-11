@@ -90,6 +90,11 @@ plugins:
   - glightbox
 
 extra:
+  # Google Analytics 4, loaded by Material on every page (instant navigation
+  # included).
+  analytics:
+    provider: google
+    property: G-62TPY04RSN
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/easysysio/EasyVault
