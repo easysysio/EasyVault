@@ -9,7 +9,7 @@ repository = "https://github.com/easysysio/EasyVault"
 [dependencies]
 # Web / async runtime
 axum = "0.8"
-axum-server = { version = "0.7", default-features = false, features = ["tls-rustls-no-provider"] }
+axum-server = { version = "0.8", default-features = false, features = ["tls-rustls-no-provider"] }
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6", features = ["trace"] }
 
@@ -33,7 +33,9 @@ x25519-dalek = { version = "2", features = ["static_secrets"] }
 sha2 = "0.10"
 rand = "0.8"
 zeroize = { version = "1.7", features = ["derive"] }
-sharks = "0.5"
+# Maintained fork of `sharks` with the polynomial-coefficient bias fixed
+# (RUSTSEC-2024-0398). Same share format, so shares issued before still unseal.
+blahaj = "0.7"
 base64 = "0.22"
 
 # Utilities

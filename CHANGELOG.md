@@ -5,6 +5,23 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Security — clear every cargo-audit advisory
+- **Shamir secret sharing moved from `sharks` to `blahaj`** (RUSTSEC-2024-0398).
+  `sharks` drew polynomial coefficients from 1–255 instead of 0–255, which lets
+  someone holding fewer than the threshold of shares rule out byte values when
+  the *same* secret is split many times. EasyVault splits the master key once,
+  at init, so existing instances are not practically exposed. `blahaj` is the
+  maintained fork with the fix and the same share format: shares issued by
+  earlier versions still unseal (covered by a fixed-vector test).
+- **axum-server 0.7 → 0.8**, which drops the unmaintained `rustls-pemfile`
+  (RUSTSEC-2025-0134). No code changes were needed.
+- Lockfile refresh: **rustls 0.23.46** (RUSTSEC-2026-0285, -0346, -0348, -0349),
+  **h2 0.4.20** (RUSTSEC-2026-0258), plus `anyhow`, `event-listener` (unsound)
+  and the yanked `spin`.
+- `rsa` (RUSTSEC-2023-0071, no fix exists) is ignored in `.cargo/audit.toml`:
+  it appears in `Cargo.lock` only as an optional dependency of sqlx's MySQL
+  driver, which EasyVault does not enable, so it is never built.
+
 ### Changed — GitHub repository moved
 - The project now lives at **https://github.com/easysysio/EasyVault** (moved
   from `yarivha/EasyVault`). Updated the Cargo `repository` field, the nfpm

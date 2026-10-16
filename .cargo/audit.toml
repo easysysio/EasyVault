@@ -1,0 +1,11 @@
+# cargo-audit configuration — read automatically when `cargo audit` runs here.
+
+[advisories]
+ignore = [
+    # rsa — Marvin attack timing side channel; no fixed version exists.
+    # Not built into EasyVault: it is only an optional dependency of
+    # sqlx-mysql, which sqlx records in Cargo.lock even though EasyVault
+    # enables just the SQLite driver (`cargo tree -i rsa --target all` is
+    # empty). EasyVault never performs RSA. Re-check if MySQL is ever enabled.
+    "RUSTSEC-2023-0071",
+]
