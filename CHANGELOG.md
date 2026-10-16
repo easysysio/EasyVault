@@ -3,7 +3,7 @@
 All notable changes to EasyVault are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.1.7] — 2026-10-16
 
 ### Security — clear every cargo-audit advisory
 - **Shamir secret sharing moved from `sharks` to `blahaj`** (RUSTSEC-2024-0398).
@@ -389,6 +389,7 @@ HMAC audit log, vault-key rotation, TLS, and a fully browser-based bootstrap.
   secret read/write → API-token REST access → IP ACL → audit + tamper detection
   → key rotation, over both HTTP and TLS.
 
+[0.1.7]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.7
 [0.1.6]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.6
 [0.1.5]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.5
 [0.1.4]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.4
