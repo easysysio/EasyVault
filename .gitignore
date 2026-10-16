@@ -44,3 +44,6 @@ RELEASE_NOTES.md
 
 # Built documentation site — mkdocs build output
 /site/
+
+# macOS Finder metadata
+.DS_Store
