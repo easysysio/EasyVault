@@ -3,6 +3,13 @@
 All notable changes to EasyVault are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Security
+- **rustls-webpki 0.103.16** (RUSTSEC-2026-0382): certificate verification
+  could accept distrusted intermediates. Lockfile-only update; EasyVault serves
+  TLS but does not verify peer certificates, so it was not reachable here.
+
 ## [0.1.7] — 2026-10-16
 
 ### Security — clear every cargo-audit advisory
