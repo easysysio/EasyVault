@@ -3,7 +3,7 @@
 All notable changes to EasyVault are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.1.8] — 2026-10-28
 
 ### Security
 - **rustls-webpki 0.103.16** (RUSTSEC-2026-0382): certificate verification
@@ -396,6 +396,7 @@ HMAC audit log, vault-key rotation, TLS, and a fully browser-based bootstrap.
   secret read/write → API-token REST access → IP ACL → audit + tamper detection
   → key rotation, over both HTTP and TLS.
 
+[0.1.8]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.8
 [0.1.7]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.7
 [0.1.6]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.6
 [0.1.5]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.5
