@@ -3,6 +3,13 @@
 All notable changes to EasyVault are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.9] — 2026-11-07
+
+### Changed — clean clippy
+- `cargo clippy --all-targets` now reports no warnings: nested `if` blocks
+  became let-chains, `Config` derives `Default`, and range checks use
+  `RangeInclusive::contains`. No change in behaviour; all 28 tests pass.
+
 ## [0.1.8] — 2026-10-28
 
 ### Security
@@ -396,6 +403,7 @@ HMAC audit log, vault-key rotation, TLS, and a fully browser-based bootstrap.
   secret read/write → API-token REST access → IP ACL → audit + tamper detection
   → key rotation, over both HTTP and TLS.
 
+[0.1.9]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.9
 [0.1.8]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.8
 [0.1.7]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.7
 [0.1.6]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.6
