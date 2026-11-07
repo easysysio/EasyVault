@@ -16,10 +16,10 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 // given path, enable foreign keys, run migrations, and return a ready pool.
 // ─────────────────────────────────────────────────────────────────────────────
 pub async fn open_sqlite(path: &Path) -> anyhow::Result<SqlitePool> {
-    if let Some(parent) = path.parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent)?;
-        }
+    if let Some(parent) = path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        std::fs::create_dir_all(parent)?;
     }
 
     let options = SqliteConnectOptions::new()

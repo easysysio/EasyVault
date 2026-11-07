@@ -42,6 +42,7 @@ pub struct ApproleListing {
 // create_role
 // Create a named AppRole on a vault with a fresh random role_id.
 // ─────────────────────────────────────────────────────────────────────────────
+#[allow(clippy::too_many_arguments)]
 pub async fn create_role(
     db: &sqlx::SqlitePool,
     vault_id: &str,

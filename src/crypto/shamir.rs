@@ -86,9 +86,8 @@ mod tests {
         let shares = split(&secret, 5, 3);
         let subset = vec![shares[0].clone(), shares[1].clone()];
         // With fewer than threshold shares the recovered value must not match.
-        match combine(3, &subset) {
-            Ok(recovered) => assert_ne!(recovered.as_slice(), &secret),
-            Err(_) => {}
+        if let Ok(recovered) = combine(3, &subset) {
+            assert_ne!(recovered.as_slice(), &secret);
         }
     }
 }

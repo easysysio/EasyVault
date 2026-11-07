@@ -178,10 +178,10 @@ pub async fn authenticate_token(
     if revoked {
         return Err(AppError::Forbidden);
     }
-    if let Some(exp) = expires_at {
-        if exp <= Utc::now() {
-            return Err(AppError::Forbidden);
-        }
+    if let Some(exp) = expires_at
+        && exp <= Utc::now()
+    {
+        return Err(AppError::Forbidden);
     }
 
     // Unwrap master_key -> token_key -> vault_key.
@@ -242,10 +242,10 @@ pub async fn lookup(db: &sqlx::SqlitePool, raw_token: &str) -> Result<TokenInfo,
     if revoked {
         return Err(AppError::Forbidden);
     }
-    if let Some(exp) = expires_at {
-        if exp <= Utc::now() {
-            return Err(AppError::Forbidden);
-        }
+    if let Some(exp) = expires_at
+        && exp <= Utc::now()
+    {
+        return Err(AppError::Forbidden);
     }
     Ok(TokenInfo {
         token_id,

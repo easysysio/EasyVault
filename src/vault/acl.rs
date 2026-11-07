@@ -22,14 +22,12 @@ pub fn client_ip(peer: SocketAddr, headers: &HeaderMap, trusted_proxies: &[Strin
         .iter()
         .filter_map(|p| p.parse::<IpAddr>().ok())
         .any(|t| t == peer_ip);
-    if trusted {
-        if let Some(xff) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
-            if let Some(first) = xff.split(',').next() {
-                if let Ok(ip) = first.trim().parse::<IpAddr>() {
-                    return ip;
-                }
-            }
-        }
+    if trusted
+        && let Some(xff) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok())
+        && let Some(first) = xff.split(',').next()
+        && let Ok(ip) = first.trim().parse::<IpAddr>()
+    {
+        return ip;
     }
     peer_ip
 }

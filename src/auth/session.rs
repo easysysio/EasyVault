@@ -260,10 +260,10 @@ pub fn clear_cookie() -> String {
 pub fn token_from_cookie_header(header: &str) -> Option<String> {
     for part in header.split(';') {
         let part = part.trim();
-        if let Some(value) = part.strip_prefix(&format!("{SESSION_COOKIE}=")) {
-            if !value.is_empty() {
-                return Some(value.to_string());
-            }
+        if let Some(value) = part.strip_prefix(&format!("{SESSION_COOKIE}="))
+            && !value.is_empty()
+        {
+            return Some(value.to_string());
         }
     }
     None

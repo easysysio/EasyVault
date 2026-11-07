@@ -9,7 +9,7 @@ use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
 /// Top-level application configuration, mirroring config.toml.example.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct Config {
     #[serde(default)]
     pub server: ServerConfig,
@@ -154,18 +154,6 @@ impl Default for InitConfig {
         Self {
             default_key_shares: 5,
             default_key_threshold: 3,
-        }
-    }
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            server: ServerConfig::default(),
-            storage: StorageConfig::default(),
-            security: SecurityConfig::default(),
-            audit: AuditConfig::default(),
-            init: InitConfig::default(),
         }
     }
 }

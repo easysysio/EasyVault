@@ -45,10 +45,10 @@ pub async fn write(
     if path.is_empty() {
         return Err(AppError::BadRequest("secret path is required".into()));
     }
-    if let Some(n) = max_reads {
-        if n < 1 {
-            return Err(AppError::BadRequest("max reads must be at least 1".into()));
-        }
+    if let Some(n) = max_reads
+        && n < 1
+    {
+        return Err(AppError::BadRequest("max reads must be at least 1".into()));
     }
 
     let mut json = serde_json::to_vec(value).map_err(|e| AppError::Internal(e.to_string()))?;

@@ -58,8 +58,10 @@ fn audit_key(master_key: &[u8; 32]) -> [u8; 32] {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // canonical
-// Build the stable field string that the HMAC is computed over.
+// Build the stable field string that the HMAC is computed over. One argument
+// per audit column, in column order — the order is part of the HMAC format.
 // ─────────────────────────────────────────────────────────────────────────────
+#[allow(clippy::too_many_arguments)]
 fn canonical(
     request_id: &str,
     timestamp: &str,

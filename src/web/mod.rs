@@ -181,7 +181,7 @@ fn build_favicon_ico() -> Vec<u8> {
             let dx = x - 16;
             let dy = ly - 13;
             let in_circle = dx * dx + dy * dy <= 25; // r = 5
-            let in_slot = x >= 14 && x <= 18 && ly >= 13 && ly <= 24;
+            let in_slot = (14..=18).contains(&x) && (13..=24).contains(&ly);
             xor.extend_from_slice(if in_circle || in_slot { &fg } else { &bg });
         }
     }
