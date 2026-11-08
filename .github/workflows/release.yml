@@ -30,17 +30,17 @@ jobs:
           - x86_64-unknown-linux-musl
           - aarch64-unknown-linux-musl
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Setup Environment
         run: |
           sudo apt-get update && sudo apt-get install -y gettext-base
-          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.48.0
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
-          cargo install cargo-zigbuild
+          cargo install --locked cargo-zigbuild --version 0.24.1
           rustup target add ${{ matrix.target }}
 
-      - uses: goto-bus-stop/setup-zig@v2
+      - uses: goto-bus-stop/setup-zig@abea47f85e598557f500fa1fd2ab7464fcb39406 # v2.2.1
         with:
           version: 0.16.0
 
@@ -63,7 +63,7 @@ jobs:
             nfpm pkg --packager $PKG --config config/easyvault.yaml --target dist/
           done
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: linux-${{ matrix.target }}
           path: dist/*
@@ -74,15 +74,15 @@ jobs:
     name: Windows · x86_64
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Setup Environment
         run: |
           sudo apt-get update && sudo apt-get install -y nsis
-          cargo install cargo-zigbuild
+          cargo install --locked cargo-zigbuild --version 0.24.1
           rustup target add x86_64-pc-windows-gnu
 
-      - uses: goto-bus-stop/setup-zig@v2
+      - uses: goto-bus-stop/setup-zig@abea47f85e598557f500fa1fd2ab7464fcb39406 # v2.2.1
         with:
           version: 0.16.0
 
@@ -96,13 +96,16 @@ jobs:
           cp config.toml.example packaging/windows/config.toml.example
           cp README.md packaging/windows/README.md
           # WinSW service wrapper (drives the binary as a Windows service).
-          curl -fsSL -o packaging/windows/easyvault-service.exe \
+          # HTTPS only, redirects included, and checked against a known hash.
+          curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL \
+            -o packaging/windows/easyvault-service.exe \
             https://github.com/winsw/winsw/releases/download/v2.12.0/WinSW.NET4.exe
+          echo "923111c7142b3dc783a3c722b19b8a21bcb78222d7a136ac33f0ca8a29f4cb66  packaging/windows/easyvault-service.exe" | sha256sum -c -
           INSTALLER="easyvault-${VERSION}-${RELEASE}-x86_64.exe"
           makensis -DVERSION="$VERSION" "-DINSTALLER_NAME=${INSTALLER}" packaging/windows/installer.nsi
           mv "packaging/windows/${INSTALLER}" dist/
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: windows-x86_64
           path: dist/*
@@ -116,7 +119,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Extract Changelog for this Version
         id: changelog
@@ -128,13 +131,13 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Download Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: ./all-packages
           merge-multiple: true
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           files: ./all-packages/*
           name: EasyVault ${{ github.ref_name }}
