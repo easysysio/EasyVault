@@ -19,7 +19,7 @@ pub async fn open_sqlite(path: &Path) -> anyhow::Result<SqlitePool> {
     if let Some(parent) = path.parent()
         && !parent.as_os_str().is_empty()
     {
-        std::fs::create_dir_all(parent)?;
+        tokio::fs::create_dir_all(parent).await?;
     }
 
     let options = SqliteConnectOptions::new()
