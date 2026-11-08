@@ -3,6 +3,15 @@
 All notable changes to EasyVault are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.10] — 2026-11-08
+
+### Security — release pipeline hardening
+- The release workflow pins every GitHub Action to a full commit SHA, pins
+  `nfpm` (v2.48.0) and `cargo-zigbuild` (0.24.1, `--locked`), and downloads
+  the WinSW service wrapper over HTTPS only with a SHA-256 check. Clears the
+  SonarCloud findings on `.github/workflows/release.yml`. No change to the
+  EasyVault binary.
+
 ## [0.1.9] — 2026-11-07
 
 ### Changed — clean clippy
@@ -403,6 +412,7 @@ HMAC audit log, vault-key rotation, TLS, and a fully browser-based bootstrap.
   secret read/write → API-token REST access → IP ACL → audit + tamper detection
   → key rotation, over both HTTP and TLS.
 
+[0.1.10]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.10
 [0.1.9]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.9
 [0.1.8]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.8
 [0.1.7]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.7
