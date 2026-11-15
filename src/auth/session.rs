@@ -161,16 +161,13 @@ pub async fn lookup(state: &Arc<AppState>, raw_token: &str) -> Option<SessionIde
     let hash = crypto::sha256_hex(raw_token.as_bytes());
     {
         let sessions = state.sessions.read().await;
-        if let Some(s) = sessions.get(&hash) {
-            if s.expires_at > Utc::now() {
-                return Some(SessionIdentity {
-                    user_id: s.user_id.clone(),
-                    username: s.username.clone(),
-                    is_master: s.is_master,
-                });
-            }
-        } else {
-            return None;
+        let s = sessions.get(&hash)?;
+        if s.expires_at > Utc::now() {
+            return Some(SessionIdentity {
+                user_id: s.user_id.clone(),
+                username: s.username.clone(),
+                is_master: s.is_master,
+            });
         }
     }
     // Expired: drop it from memory and DB.

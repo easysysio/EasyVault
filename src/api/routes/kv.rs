@@ -71,10 +71,10 @@ async fn begin(
     peer: SocketAddr,
     path: &str,
     operation: &str,
-) -> Result<Ctx, Response> {
+) -> Result<Ctx, AppError> {
     let master = match state.master_key_bytes().await {
         Some(m) => m,
-        None => return Err(AppError::Sealed.into_response()),
+        None => return Err(AppError::Sealed),
     };
     let ip = acl::client_ip(peer, headers, &state.config.security.trusted_proxies);
     let ip_str = ip.to_string();
@@ -86,14 +86,14 @@ async fn begin(
         .filter(|s| !s.is_empty())
     else {
         record_deny(state, &master, operation, None, path, None, &ip_str).await;
-        return Err(AppError::Forbidden.into_response());
+        return Err(AppError::Forbidden);
     };
 
     let auth = match tokens::authenticate_token(&state.db, &master, raw).await {
         Ok(a) => a,
         Err(e) => {
             record_deny(state, &master, operation, None, path, None, &ip_str).await;
-            return Err(e.into_response());
+            return Err(e);
         }
     };
 
@@ -102,7 +102,7 @@ async fn begin(
         && acl::ip_allowed(ip, &auth.allowed_ips);
     if !allowed {
         record_deny(state, &master, operation, Some(&auth.vault_id), path, Some(&auth.token_id), &ip_str).await;
-        return Err(AppError::Forbidden.into_response());
+        return Err(AppError::Forbidden);
     }
 
     Ok(Ctx { auth, ip: ip_str, master })
@@ -169,10 +169,7 @@ pub async fn read(
     Path(path): Path<String>,
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
-    let ctx = match begin(&state, &headers, peer, &path, "READ").await {
-        Ok(c) => c,
-        Err(resp) => return Ok(resp),
-    };
+    let ctx = begin(&state, &headers, peer, &path, "READ").await?;
     // Consuming read — single/N-use secrets burn here.
     match secrets::read_and_consume(&state.db, &ctx.auth.vault_id, &path, &ctx.auth.vault_key).await? {
         Some((version, value, remaining)) => {
@@ -201,10 +198,7 @@ pub async fn write(
     headers: HeaderMap,
     Json(body): Json<WriteBody>,
 ) -> Result<Response, AppError> {
-    let ctx = match begin(&state, &headers, peer, &path, "WRITE").await {
-        Ok(c) => c,
-        Err(resp) => return Ok(resp),
-    };
+    let ctx = begin(&state, &headers, peer, &path, "WRITE").await?;
     if !ctx.auth.writable {
         audit_ok(&state, &ctx, "WRITE", &path, 403).await;
         return Err(AppError::Forbidden);
@@ -226,10 +220,7 @@ pub async fn delete(
     Path(path): Path<String>,
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
-    let ctx = match begin(&state, &headers, peer, &path, "DELETE").await {
-        Ok(c) => c,
-        Err(resp) => return Ok(resp),
-    };
+    let ctx = begin(&state, &headers, peer, &path, "DELETE").await?;
     if !ctx.auth.writable {
         audit_ok(&state, &ctx, "DELETE", &path, 403).await;
         return Err(AppError::Forbidden);
@@ -277,10 +268,7 @@ async fn metadata_list_inner(
     path: &str,
     list: bool,
 ) -> Result<Response, AppError> {
-    let ctx = match begin(state, headers, peer, path, "LIST").await {
-        Ok(c) => c,
-        Err(resp) => return Ok(resp),
-    };
+    let ctx = begin(state, headers, peer, path, "LIST").await?;
     if !list {
         return Err(AppError::BadRequest("only ?list=true is supported on metadata".into()));
     }

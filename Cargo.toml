@@ -11,7 +11,6 @@ repository = "https://github.com/easysysio/EasyVault"
 axum = "0.8"
 axum-server = { version = "0.8", default-features = false, features = ["tls-rustls-no-provider"] }
 tokio = { version = "1", features = ["full"] }
-tower-http = { version = "0.6", features = ["trace"] }
 
 # TLS — pin rustls + rcgen to the pure-portable `ring` backend (not aws-lc-rs)
 # so the binary cross-compiles cleanly to musl / aarch64 via cargo-zigbuild.
