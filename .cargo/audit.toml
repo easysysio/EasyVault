@@ -8,4 +8,15 @@ ignore = [
     # enables just the SQLite driver (`cargo tree -i rsa --target all` is
     # empty). EasyVault never performs RSA. Re-check if MySQL is ever enabled.
     "RUSTSEC-2023-0071",
+
+    # libsqlite3-sys — bundled SQLite < 3.54.0 can return uninitialised
+    # page-cache memory when it opens a database together with a crafted
+    # `-wal` file (CVE-2026-119375). Fixed in libsqlite3-sys 0.39, but no sqlx
+    # release accepts it yet (sqlx 0.8.6 and 0.9.0 both require < 0.38).
+    # Exposure needs someone else to be able to write EasyVault's own database
+    # directory, which already lets them destroy the data; keep it owned by
+    # the service user (the Linux packages create /var/lib/easyvault 0750,
+    # owned by easyvault, so only that user can write it). Remove this entry as
+    # soon as sqlx allows libsqlite3-sys >= 0.39.
+    "RUSTSEC-2026-0459",
 ]

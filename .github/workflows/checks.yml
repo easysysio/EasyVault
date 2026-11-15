@@ -1,0 +1,45 @@
+# =============================================================================
+# checks.yml — cargo clippy and cargo audit.
+#
+# Runs on every push to main and is called by release.yml, so a release is only
+# built when both pass. Clippy fails on any warning; audit fails on any
+# advisory not ignored in .cargo/audit.toml.
+# =============================================================================
+
+name: EasyVault Checks
+
+on:
+  push:
+    branches: [main]
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  clippy:
+    name: cargo clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Setup Rust
+        run: |
+          rustup update stable
+          rustup component add clippy
+
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Install cargo-audit
+        run: cargo install --locked cargo-audit --version 0.23.0
+
+      - name: Audit
+        run: cargo audit

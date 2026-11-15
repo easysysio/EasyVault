@@ -1,7 +1,8 @@
 # =============================================================================
 # release.yml — build packages and publish a GitHub release on tag push.
 #
-# Triggered by pushing a tag like v0.1.0. Builds entirely on Ubuntu using
+# Triggered by pushing a tag like v0.1.0. cargo clippy and cargo audit
+# (checks.yml) must pass first. Builds entirely on Ubuntu using
 # cargo-zigbuild for cross-compilation:
 #   * Linux .deb + .rpm for x86_64 and aarch64 (musl) via nfpm
 #   * Windows installer (.exe) via cargo-zigbuild + NSIS (makensis)
@@ -19,10 +20,15 @@ on:
       - "v*"
 
 jobs:
+  # ── CHECKS (clippy + audit must pass before anything is built) ────────────
+  checks:
+    uses: ./.github/workflows/checks.yml
+
   # ── LINUX (deb + rpm, x86_64 + aarch64) ───────────────────────────────────
   build-linux:
     name: Linux · ${{ matrix.target }}
     runs-on: ubuntu-latest
+    needs: checks
     strategy:
       fail-fast: false
       matrix:
@@ -73,6 +79,7 @@ jobs:
   build-windows:
     name: Windows · x86_64
     runs-on: ubuntu-latest
+    needs: checks
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
