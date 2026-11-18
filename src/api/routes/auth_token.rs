@@ -51,7 +51,7 @@ pub async fn lookup_self(State(state): State<Arc<AppState>>, headers: HeaderMap)
         "ttl": info.ttl_seconds(),
         "renewable": info.renewable,
         "creation_time": info.created_at,
-        "expire_time": info.expires_at.map(|e| e.to_rfc3339()),
+        "expire_time": info.expires_at.map(crate::clock::rfc3339),
         "meta": { "vault_id": info.vault_id, "allowed_ips": info.allowed_ips },
     })))
     .into_response())
@@ -88,7 +88,7 @@ pub async fn renew_self(
     Ok(Json(VaultResponse::new(json!({
         "ttl": info.ttl_seconds(),
         "renewable": info.renewable,
-        "expire_time": info.expires_at.map(|e| e.to_rfc3339()),
+        "expire_time": info.expires_at.map(crate::clock::rfc3339),
     })))
     .into_response())
 }

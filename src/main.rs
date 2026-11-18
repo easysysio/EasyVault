@@ -10,6 +10,7 @@ mod api;
 mod approle;
 mod audit;
 mod auth;
+mod clock;
 mod config;
 mod crypto;
 mod error;

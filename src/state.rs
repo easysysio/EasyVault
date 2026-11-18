@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use chrono::{DateTime, Utc};
+use time::OffsetDateTime;
 use tokio::sync::RwLock;
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
@@ -63,14 +63,14 @@ pub struct SessionSecrets {
     #[zeroize(skip)]
     pub public_key: [u8; 32],
     #[zeroize(skip)]
-    pub expires_at: DateTime<Utc>,
+    pub expires_at: OffsetDateTime,
 }
 
 /// Per-username failed-login tracking for brute-force lockout.
 #[derive(Default)]
 pub struct ThrottleEntry {
     pub failures: u32,
-    pub locked_until: Option<DateTime<Utc>>,
+    pub locked_until: Option<OffsetDateTime>,
 }
 
 /// Shared application state handed to every Axum handler via `State`.

@@ -11,10 +11,11 @@ use std::sync::Arc;
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64URL;
-use chrono::{Duration, Utc};
+use time::Duration;
 use uuid::Uuid;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
+use crate::clock;
 use crate::crypto::argon2;
 use crate::crypto::{self, aes};
 use crate::error::AppError;
@@ -124,7 +125,7 @@ pub async fn create_session(
     let raw_token = B64URL.encode(crypto::random_bytes::<32>());
     let session_hash = crypto::sha256_hex(raw_token.as_bytes());
     let ttl = Duration::hours(state.config.security.session_ttl_hours as i64);
-    let expires_at = Utc::now() + ttl;
+    let expires_at = clock::now() + ttl;
 
     sqlx::query(
         "INSERT INTO gui_sessions (id, user_id, session_hash, expires_at, ip_address) \
@@ -133,7 +134,7 @@ pub async fn create_session(
     .bind(Uuid::new_v4().to_string())
     .bind(&auth.user_id)
     .bind(&session_hash)
-    .bind(expires_at)
+    .bind(clock::rfc3339(expires_at))
     .bind(ip)
     .execute(&state.db)
     .await?;
@@ -162,7 +163,7 @@ pub async fn lookup(state: &Arc<AppState>, raw_token: &str) -> Option<SessionIde
     {
         let sessions = state.sessions.read().await;
         let s = sessions.get(&hash)?;
-        if s.expires_at > Utc::now() {
+        if s.expires_at > clock::now() {
             return Some(SessionIdentity {
                 user_id: s.user_id.clone(),
                 username: s.username.clone(),
@@ -184,7 +185,7 @@ pub async fn keys(state: &Arc<AppState>, raw_token: &str) -> Option<SessionKeys>
     let hash = crypto::sha256_hex(raw_token.as_bytes());
     let sessions = state.sessions.read().await;
     let s = sessions.get(&hash)?;
-    if s.expires_at <= Utc::now() {
+    if s.expires_at <= clock::now() {
         return None;
     }
     Some(SessionKeys {

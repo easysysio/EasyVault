@@ -14,7 +14,7 @@ use axum::extract::{ConnectInfo, Form, Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
-use chrono::{Duration, Utc};
+use time::Duration;
 use serde::Deserialize;
 use zeroize::Zeroize;
 
@@ -1459,9 +1459,9 @@ async fn locked_message(state: &Arc<AppState>, key: &str) -> Option<String> {
     let throttle = state.login_throttle.read().await;
     let entry = throttle.get(key)?;
     let until = entry.locked_until?;
-    let remaining = until - Utc::now();
-    if remaining > Duration::zero() {
-        let mins = remaining.num_minutes() + 1;
+    let remaining = until - crate::clock::now();
+    if remaining > Duration::ZERO {
+        let mins = remaining.whole_minutes() + 1;
         Some(format!("Too many failed attempts. Try again in about {mins} minute(s)."))
     } else {
         None
@@ -1479,7 +1479,7 @@ async fn record_failure(state: &Arc<AppState>, key: &str) {
     let entry = throttle.entry(key.to_string()).or_default();
     entry.failures += 1;
     if entry.failures >= max {
-        entry.locked_until = Some(Utc::now() + Duration::minutes(lockout));
+        entry.locked_until = Some(crate::clock::now() + Duration::minutes(lockout));
         entry.failures = 0;
     }
 }

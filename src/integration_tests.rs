@@ -446,3 +446,20 @@ async fn audit_hmac_detects_tampering() {
     // A different (wrong) master key also fails verification.
     assert!(!audit::verify_row(&crypto::random_key(), &rows[0]));
 }
+
+// Expiry times written by EasyVault ≤ 0.1.10 (chrono) must still load after
+// the move to the `time` crate, and new ones must keep the same shape.
+#[tokio::test]
+async fn stored_timestamps_from_chrono_still_decode() {
+    let db = test_pool().await;
+    for stored in [
+        "2026-11-18T10:00:00+00:00",
+        "2026-11-18T10:00:00.123+00:00",
+        "2026-11-18T10:00:00.123456+00:00",
+        "2026-11-18T10:00:00.123456789+00:00",
+    ] {
+        let t: time::OffsetDateTime = sqlx::query_scalar("SELECT ?").bind(stored).fetch_one(&db).await.unwrap();
+        assert_eq!(t.unix_timestamp(), 1_794_996_000, "{stored}");
+        assert_eq!(crate::clock::rfc3339(t), stored, "{stored}");
+    }
+}

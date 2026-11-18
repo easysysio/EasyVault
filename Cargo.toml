@@ -18,7 +18,7 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 rcgen = { version = "0.13", default-features = false, features = ["pem", "ring"] }
 
 # Storage
-sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate", "chrono"] }
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "migrate", "time"] }
 
 # Serialization / config
 serde = { version = "1", features = ["derive"] }
@@ -43,7 +43,7 @@ thiserror = "2"
 ipnet = "2"
 hmac = "0.12"
 uuid = { version = "1", features = ["v4"] }
-chrono = { version = "0.4", features = ["serde"] }
+time = { version = "0.3", features = ["formatting", "parsing"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

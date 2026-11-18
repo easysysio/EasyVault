@@ -10,10 +10,11 @@
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64URL;
-use chrono::{DateTime, Duration, Utc};
+use time::OffsetDateTime;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
+use crate::clock;
 use crate::crypto::{self, aes};
 use crate::error::AppError;
 use crate::vault;
@@ -120,7 +121,7 @@ async fn mint(
     let paths_vec: Vec<String> = if allowed_paths.is_empty() { vec!["*".into()] } else { allowed_paths.to_vec() };
     let paths_json = serde_json::to_string(&paths_vec).unwrap_or_else(|_| "[\"*\"]".into());
     let ips_json = serde_json::to_string(allowed_ips).unwrap_or_else(|_| "[]".into());
-    let expires_at: Option<DateTime<Utc>> = ttl_seconds.map(|s| Utc::now() + Duration::seconds(s));
+    let expires_at: Option<String> = ttl_seconds.map(clock::after_seconds).transpose()?.map(clock::rfc3339);
     // Tokens with a TTL are renewable; renew-self extends them by `renew_period`.
     let renewable = ttl_seconds.is_some();
 
@@ -164,7 +165,7 @@ pub async fn authenticate_token(
     raw_token: &str,
 ) -> Result<TokenAuth, AppError> {
     let token_hash = crypto::sha256_hex(raw_token.as_bytes());
-    let row = sqlx::query_as::<_, (String, String, Option<String>, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, String, String, Option<DateTime<Utc>>, bool, bool)>(
+    let row = sqlx::query_as::<_, (String, String, Option<String>, Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, String, String, Option<OffsetDateTime>, bool, bool)>(
         "SELECT id, vault_id, created_by, vault_key_enc, vault_key_nonce, token_key_enc, \
          token_key_nonce, allowed_paths, allowed_ips, expires_at, revoked, writable \
          FROM api_tokens WHERE token_hash = ?",
@@ -179,7 +180,7 @@ pub async fn authenticate_token(
         return Err(AppError::Forbidden);
     }
     if let Some(exp) = expires_at
-        && exp <= Utc::now()
+        && exp <= clock::now()
     {
         return Err(AppError::Forbidden);
     }
@@ -207,7 +208,7 @@ pub struct TokenInfo {
     pub display_name: Option<String>,
     pub allowed_paths: Vec<String>,
     pub allowed_ips: Vec<String>,
-    pub expires_at: Option<DateTime<Utc>>,
+    pub expires_at: Option<OffsetDateTime>,
     pub renewable: bool,
     pub created_at: String,
 }
@@ -216,7 +217,7 @@ impl TokenInfo {
     /// Seconds until expiry (0 if expired or never-expiring).
     pub fn ttl_seconds(&self) -> i64 {
         match self.expires_at {
-            Some(exp) => (exp - Utc::now()).num_seconds().max(0),
+            Some(exp) => (exp - clock::now()).whole_seconds().max(0),
             None => 0,
         }
     }
@@ -229,7 +230,7 @@ impl TokenInfo {
 // ─────────────────────────────────────────────────────────────────────────────
 pub async fn lookup(db: &sqlx::SqlitePool, raw_token: &str) -> Result<TokenInfo, AppError> {
     let token_hash = crypto::sha256_hex(raw_token.as_bytes());
-    let row = sqlx::query_as::<_, (String, String, Option<String>, String, String, Option<DateTime<Utc>>, bool, bool, String)>(
+    let row = sqlx::query_as::<_, (String, String, Option<String>, String, String, Option<OffsetDateTime>, bool, bool, String)>(
         "SELECT id, vault_id, display_name, allowed_paths, allowed_ips, expires_at, \
          renewable, revoked, created_at FROM api_tokens WHERE token_hash = ?",
     )
@@ -243,7 +244,7 @@ pub async fn lookup(db: &sqlx::SqlitePool, raw_token: &str) -> Result<TokenInfo,
         return Err(AppError::Forbidden);
     }
     if let Some(exp) = expires_at
-        && exp <= Utc::now()
+        && exp <= clock::now()
     {
         return Err(AppError::Forbidden);
     }
@@ -282,7 +283,7 @@ pub async fn revoke_self(db: &sqlx::SqlitePool, raw_token: &str) -> Result<(), A
 // ─────────────────────────────────────────────────────────────────────────────
 pub async fn renew(db: &sqlx::SqlitePool, raw_token: &str, increment: Option<i64>) -> Result<TokenInfo, AppError> {
     let token_hash = crypto::sha256_hex(raw_token.as_bytes());
-    let row = sqlx::query_as::<_, (String, bool, bool, Option<i64>, Option<DateTime<Utc>>)>(
+    let row = sqlx::query_as::<_, (String, bool, bool, Option<i64>, Option<OffsetDateTime>)>(
         "SELECT id, renewable, revoked, renew_period, expires_at FROM api_tokens WHERE token_hash = ?",
     )
     .bind(&token_hash)
@@ -291,7 +292,7 @@ pub async fn renew(db: &sqlx::SqlitePool, raw_token: &str, increment: Option<i64
     .ok_or(AppError::Forbidden)?;
 
     let (_id, renewable, revoked, renew_period, expires_at) = row;
-    if revoked || expires_at.map(|e| e <= Utc::now()).unwrap_or(false) {
+    if revoked || expires_at.map(|e| e <= clock::now()).unwrap_or(false) {
         return Err(AppError::Forbidden);
     }
     if !renewable {
@@ -301,7 +302,7 @@ pub async fn renew(db: &sqlx::SqlitePool, raw_token: &str, increment: Option<i64
     if secs <= 0 {
         return Err(AppError::BadRequest("nothing to renew".into()));
     }
-    let new_expiry = Utc::now() + Duration::seconds(secs);
+    let new_expiry = clock::rfc3339(clock::after_seconds(secs)?);
     sqlx::query("UPDATE api_tokens SET expires_at = ? WHERE token_hash = ?")
         .bind(new_expiry)
         .bind(&token_hash)

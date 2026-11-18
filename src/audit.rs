@@ -7,7 +7,7 @@
 // Secret values are never logged — only paths, actors, IPs and result codes.
 // =============================================================================
 
-use chrono::{Duration, Utc};
+use time::Duration;
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -105,7 +105,7 @@ fn hmac_hex(master_key: &[u8; 32], data: &str) -> String {
 // ─────────────────────────────────────────────────────────────────────────────
 pub async fn record(db: &sqlx::SqlitePool, master_key: &[u8; 32], entry: AuditEntry<'_>) {
     let request_id = Uuid::new_v4().to_string();
-    let timestamp = Utc::now().to_rfc3339();
+    let timestamp = crate::clock::rfc3339(crate::clock::now());
     let canon = canonical(
         &request_id,
         &timestamp,
@@ -201,7 +201,7 @@ pub async fn prune(db: &sqlx::SqlitePool) -> Result<u64, AppError> {
     }
     // Both stored timestamps and this cutoff are RFC3339 (UTC, +00:00), so a
     // lexicographic comparison is chronologically correct.
-    let cutoff = (Utc::now() - Duration::days(days)).to_rfc3339();
+    let cutoff = crate::clock::rfc3339(crate::clock::now() - Duration::days(days));
     let res = sqlx::query("DELETE FROM audit_log WHERE timestamp < ?")
         .bind(cutoff)
         .execute(db)
