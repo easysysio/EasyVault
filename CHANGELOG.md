@@ -3,6 +3,28 @@
 All notable changes to EasyVault are documented here.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.1.11] — 2026-11-18
+
+### Security
+- **chrono replaced with `time`** (RUSTSEC-2026-0543, chrono unmaintained).
+  Timestamps keep exactly the stored format (RFC 3339, UTC, `+00:00`), so
+  existing audit rows, token expiries and sessions load unchanged and audit
+  retention still compares correctly. sqlx now uses its `time` feature.
+- A token TTL that would end past the year 9999 is refused with a 400 instead
+  of failing the request.
+- **RUSTSEC-2026-0459** (bundled SQLite, crafted `-wal` file) is listed as
+  ignored in `.cargo/audit.toml` until sqlx accepts `libsqlite3-sys` 0.39.
+  Exposure needs write access to EasyVault's own data directory
+  (`/var/lib/easyvault`, 0750, owned by `easyvault`).
+
+### Changed
+- CI: new `checks.yml` runs `cargo clippy -D warnings` and `cargo audit` on
+  every push to `main`; the release workflow builds only when both pass.
+- Cleared the lints added in clippy 1.100 and removed the unused `tower-http`
+  dependency. API responses are unchanged.
+- The database directory is created with `tokio::fs` (no blocking call on the
+  async runtime; SonarCloud rust:S7493).
+
 ## [0.1.10] — 2026-11-08
 
 ### Security — release pipeline hardening
@@ -412,6 +434,7 @@ HMAC audit log, vault-key rotation, TLS, and a fully browser-based bootstrap.
   secret read/write → API-token REST access → IP ACL → audit + tamper detection
   → key rotation, over both HTTP and TLS.
 
+[0.1.11]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.11
 [0.1.10]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.10
 [0.1.9]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.9
 [0.1.8]: https://github.com/easysysio/EasyVault/releases/tag/v0.1.8
